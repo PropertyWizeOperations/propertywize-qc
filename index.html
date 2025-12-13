@@ -321,7 +321,7 @@
             const text = await extractText(input.files[0], 2); 
             document.getElementById('leaseStatus').innerText = "✅ Ready";
             
-            // Regex Extraction
+            // Regex Look-Ahead Strategy (150 chars)
             const rentMatch = text.match(/installments of[\s\S]{1,150}?\$([0-9,]+\.[0-9]{2})/i);
             const depMatch = text.match(/Security Deposit shall mean[\s\S]{1,150}?\$([0-9,]+\.[0-9]{2})/i);
             const nameMatch = text.match(/Name:\s*([A-Za-z]+\s+[A-Za-z]+).*?DOB:/);
@@ -346,6 +346,7 @@
         try {
             const text = await extractText(input.files[0]);
             document.getElementById('ledgerStatus').innerText = "✅ Ready";
+            
             EXTRACTED_LEDGER = [];
             const lines = text.split(/(\d{1,2}\/\d{1,2}\/\d{4})/);
             
@@ -357,10 +358,12 @@
                     const amount = parseFloat(amtMatch[0].replace(',',''));
                     const desc = rest.toLowerCase();
                     let type = 'Other';
+                    
                     if(desc.includes('rent') && !desc.includes('pet') && !desc.includes('ftp')) type = 'Base Rent';
                     else if(desc.includes('water') || desc.includes('util')) type = 'Utility';
                     else if(desc.includes('late')) type = 'Late Fee';
                     else if(desc.includes('ftp') || desc.includes('pet') || desc.includes('benefit') || desc.includes('warrant')) type = 'Misc';
+                    
                     EXTRACTED_LEDGER.push({ date, amount, type, desc: rest.substring(0,50) });
                 }
             }
@@ -390,22 +393,24 @@
         EXTRACTED_LEDGER.forEach(row => {
             if(row.type === 'Base Rent' && row.amount > 0) {
                 if(Math.abs(row.amount - rent) > 1) {
-                    errors.push(`Rent Charge on ${row.date} ($${row.amount}) != Lease ($${rent})`);
+                    errors.push({ msg: `Rent Charge on ${row.date} ($${row.amount}) != Lease ($${rent})`, type: 'Financial' });
                     misappliedTotal += Math.abs(row.amount - rent);
                 }
                 rentBal += row.amount;
-            } else if (row.amount < 0) { rentBal += row.amount; }
+            } else if (row.amount < 0) {
+                rentBal += row.amount;
+            }
 
             if(row.amount < 0 && rentBal > 100) {
                 if(row.type === 'Utility' || row.type === 'Misc') {
-                    errors.push(`Misallocation on ${row.date}: Paid ${row.type} before Rent.`);
+                    errors.push({ msg: `Misallocation on ${row.date}: Paid ${row.type} before Rent.`, type: 'Financial' });
                     misappliedTotal += Math.abs(row.amount);
                 }
             }
 
             if(row.type === 'Late Fee') {
                 if(Math.abs(row.amount - lateFeeCalc) > 1) {
-                    errors.push(`Incorrect Late Fee on ${row.date}: $${row.amount} (Expected $${lateFeeCalc})`);
+                    errors.push({ msg: `Incorrect Late Fee on ${row.date}: $${row.amount} (Expected $${lateFeeCalc})`, type: 'Financial' });
                     misappliedTotal += Math.abs(row.amount - lateFeeCalc);
                 }
             }
@@ -414,22 +419,22 @@
         const penalty = (misappliedTotal * 0.10).toFixed(2);
         const score = Math.max(0, 100 - (errors.length * 10));
 
-        // Generate UI
+        // Display Findings
         document.getElementById('resultsCard').style.display = 'block';
-        let html = errors.length === 0 ? `<div class="badge bg-pass">PASS</div>` : `<h4 style="color:var(--danger)">${errors.length} Financial Errors Found</h4>`;
-        errors.forEach(e => html += `<div style="color:var(--danger)">• ${e}</div>`);
+        let html = errors.length === 0 ? `<div class="badge bg-pass" style="font-size:1rem; padding:10px;">PASS: No Financial Errors</div>` 
+                                       : `<h4 style="color:var(--danger)">${errors.length} Financial Errors Found</h4>`;
+        errors.forEach(e => html += `<div style="color:var(--danger)">• ${e.msg}</div>`);
         document.getElementById('auditReport').innerHTML = html;
 
-        // Generate Email
+        // Email Template
         const date = new Date().toLocaleDateString();
         let body = `URGENT: Financial QC Audit Corrections Required\nTenant: ${tenant}\nProperty: ${addr}\nDate of Audit: ${date}\n\n`;
-        body += `Team,\n\nThe following FINANCIAL ERRORS were detected:\n`;
-        errors.forEach(e => body += `[ ] ${e}\n`);
+        body += `Team,\n\nThe following FINANCIAL ERRORS were detected during the daily audit. Please review and correct immediately.\n\n`;
         
         if(errors.length > 0) {
+            errors.forEach(e => body += `[ ] ${e.msg}\n`);
             body += `\nTOTAL MISAPPLIED: $${misappliedTotal.toFixed(2)}\nPENALTY ASSESSED (10%): $${penalty}\n\n`;
             
-            // INSTRUCTIONS
             body += `--------------------------------------\n`;
             body += `HOW TO USE THE DASHBOARD:\n`;
             body += `1. Access the QC Dashboard link.\n`;
@@ -438,19 +443,19 @@
             body += `--------------------------------------\n\n`;
 
             body += `STEPS TO APPEAL:\n1. Review SOP.\n2. Reply "APPEAL" with justification.\n\n`;
-            body += `ACTION REQUIRED:\nReply "I acknowledge and accept these errors" and attach screenshots of corrections.`;
+            body += `ACTION REQUIRED:\nReply "I acknowledge and accept these errors" and attach screenshots of corrections in Buildium.`;
         } else {
             body += `Audit Passed. No financial errors found.`;
         }
         document.getElementById('emailOutput').value = body;
 
-        // Prepare Data Object
+        // Staging Data
         window.currentAudit = {
             id: Date.now(),
             date: date,
             emailDate: new Date().toLocaleString(), 
             tenant, addr, va, score, penalty,
-            errors: errors, // Store exact array
+            errors: errors.map(e=>e.msg),
             status: errors.length === 0 ? 'Passed' : 'Action Req',
             emailSubject: `Financial QC Audit - ${tenant} - ${addr} - ${date}`,
             emailBody: body
@@ -474,7 +479,7 @@
         localStorage.setItem('pw_qc_data', JSON.stringify(history));
         alert("Audit Saved.");
         renderHistory();
-        updateStats();
+        updateStats(); // Instant recalculation
         window.currentAudit = null;
         document.getElementById('resultsCard').style.display = 'none';
         document.getElementById('verificationCard').style.display = 'none';
@@ -538,7 +543,6 @@
         document.getElementById('repPenalty').innerText = "$" + item.penalty;
         
         let findingsHTML = "";
-        // Strict check: Show errors even if status changed, as long as they exist in data
         if(item.errors && item.errors.length > 0) {
             item.errors.forEach(e => findingsHTML += `<div class="finding">${e}</div>`);
         } else {
@@ -550,7 +554,7 @@
         element.style.display = 'block';
         html2pdf(element, {
             margin: 10,
-            filename: `Audit_${item.tenant}_${item.addr.split(',')[0]}_${item.date}.pdf`,
+            filename: `Audit_${item.tenant}_${item.date.replace(/\//g,'-')}.pdf`,
             image: { type: 'jpeg', quality: 0.98 },
             html2canvas: { scale: 2 },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
@@ -559,7 +563,7 @@
         });
     }
 
-    // --- MODALS & WORKFLOWS ---
+    // --- MODALS ---
     function openVAModal(id) {
         TEMP_AUDIT_ID = id;
         document.getElementById('vaModal').style.display = 'flex';
@@ -607,7 +611,7 @@
         TEMP_AUDIT_ID = null;
     }
 
-    // --- HELPER FUNCS ---
+    // --- HELPERS ---
     function updateAudit(id, updates) {
         let history = JSON.parse(localStorage.getItem('pw_qc_data'));
         let item = history.find(h => h.id === id);
@@ -633,11 +637,10 @@
     }
 
     function uploadProof(id) {
-        // Simulate file input
         const input = document.createElement('input');
         input.type = 'file';
         input.onchange = e => {
-            alert("Proof uploaded successfully!");
+            alert("Proof uploaded!");
             updateAudit(id, { status: "Corrected" });
         };
         input.click();
