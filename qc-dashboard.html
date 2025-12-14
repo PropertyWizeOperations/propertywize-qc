@@ -1,108 +1,95 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PropertyWize QC Hub V12</title>
+    <title>PropertyWize QC Hub V18</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script> <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
     <style>
-        :root {
-            --primary: #003366; --accent: #28a745; --danger: #dc3545; --warning: #ffc107; --light: #f4f6f9; --white: #ffffff;
-        }
-        body { font-family: 'Segoe UI', sans-serif; background-color: var(--light); margin: 0; color: #333; height: 100vh; display: flex; flex-direction: column; }
+        :root { --primary: #003366; --accent: #28a745; --danger: #dc3545; --warning: #ffc107; --light: #f4f6f9; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--light); margin: 0; color: #333; height: 100vh; display: flex; flex-direction: column; }
+        .navbar { background: var(--primary); color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; }
         
-        /* Header */
-        .navbar { background: var(--primary); color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .brand { font-size: 1.4rem; font-weight: bold; display: flex; align-items: center; gap: 10px; }
-        .brand img { height: 40px; border-radius: 5px; background: white; padding: 2px; }
+        /* Brand Styling */
+        .brand { font-size: 1.4rem; font-weight: bold; display: flex; align-items: center; gap: 10px; letter-spacing: 0.5px; }
+        .brand span { color: white; } 
+        .brand img { height: 40px; background: white; padding: 2px; border-radius: 4px; }
+        
         .mode-select { padding: 8px; border-radius: 5px; font-weight: bold; border: none; cursor: pointer; }
-        
         .role-switch { background: rgba(255,255,255,0.1); padding: 5px; border-radius: 20px; display: flex; gap: 10px; }
-        .role-btn { padding: 5px 15px; border-radius: 15px; cursor: pointer; font-size: 0.85rem; font-weight: bold; transition: 0.2s; border:none; opacity: 0.7; color: #333; background: #ddd; }
+        .role-btn { padding: 5px 15px; border-radius: 15px; cursor: pointer; border:none; opacity: 0.7; color: #333; background: #ddd; font-weight:bold; }
         .role-btn.active { background: var(--accent); color: white; opacity: 1; }
-
-        /* Layout */
         .container { display: flex; flex: 1; overflow: hidden; }
         .sidebar { width: 260px; background: white; border-right: 1px solid #ddd; display: flex; flex-direction: column; }
         .main-content { flex: 1; padding: 30px; overflow-y: auto; }
-        .nav-item { padding: 15px 25px; cursor: pointer; border-bottom: 1px solid #eee; color: #555; font-weight: 500; }
-        .nav-item:hover, .nav-item.active { background: #e8f5e9; color: var(--primary); border-left: 4px solid var(--accent); }
-
-        /* UI Elements */
+        .nav-item { padding: 15px 25px; cursor: pointer; border-bottom: 1px solid #eee; font-weight: 500; }
+        .nav-item.active { background: #e8f5e9; color: var(--primary); border-left: 4px solid var(--accent); }
         .card { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 20px; }
         .drop-zone { border: 2px dashed #cbd5e0; border-radius: 8px; padding: 30px; text-align: center; cursor: pointer; transition: 0.2s; background: #fafafa; }
         .drop-zone:hover { border-color: var(--accent); background: #eef9f0; }
         .scanned-data { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 15px; margin-top: 15px; background: #eef2f7; padding: 15px; border-radius: 6px; }
         input, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-        
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.9rem; }
-        th { background: #eef2f7; color: var(--primary); padding: 12px; text-align: left; }
-        td { padding: 10px 12px; border-bottom: 1px solid #eee; vertical-align: middle; }
-        .badge { padding: 4px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; }
-        .bg-pass { background: #d4edda; color: #155724; } .bg-fail { background: #f8d7da; color: #721c24; } .bg-warn { background: #fff3cd; color: #856404; } .bg-ack { background: #d1ecf1; color: #0c5460; } .bg-type { background: #e2e6ea; color: #333; border: 1px solid #ccc; }
-
-        .btn { padding: 8px 16px; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 0.85rem; }
+        .btn { padding: 8px 16px; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; margin-right: 5px; }
         .btn-primary { background: var(--primary); color: white; }
         .btn-accent { background: var(--accent); color: white; }
         .btn-danger { background: var(--danger); color: white; }
-        .btn-outline { border: 1px solid #ccc; background: white; color: #555; }
-
-        /* Modals & Loaders */
-        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000; }
-        .modal { background: white; width: 500px; padding: 30px; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
-        .alert-box { background: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; margin-bottom: 20px; display: none; justify-content: space-between; align-items: center; }
+        .btn-outline { border: 1px solid #ccc; background: white; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.9rem; }
+        th { background: #eef2f7; color: var(--primary); padding: 12px; text-align: left; }
+        td { padding: 10px 12px; border-bottom: 1px solid #eee; }
+        .badge { padding: 4px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; }
+        .bg-pass { background: #d4edda; color: #155724; } .bg-fail { background: #f8d7da; color: #721c24; } 
+        .bg-warn { background: #fff3cd; color: #856404; }
         #loadingOverlay { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.9); display:none; justify-content:center; align-items:center; z-index:1000; flex-direction:column; }
         .spinner { border: 4px solid #f3f3f3; border-top: 4px solid var(--accent); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        
-        /* Hidden Template */
-        #pdfTemplate { display: none; padding: 40px; font-family: 'Helvetica', sans-serif; color: #333; background: white; width: 800px; }
+
+        /* PDF Template Styles (Hidden from View) */
+        #pdf-template { display: none; width: 800px; padding: 40px; font-family: 'Helvetica', sans-serif; background:white; color:#333; }
+        .pdf-header { display:flex; justify-content:space-between; align-items:center; border-bottom: 2px solid #003366; padding-bottom:15px; margin-bottom:20px; }
+        .pdf-logo { font-size: 24px; font-weight: bold; color: #003366; }
+        .pdf-title { font-size: 18px; color: #555; }
+        .pdf-meta { display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom: 30px; background: #f4f6f9; padding:15px; border-radius:5px; }
+        .pdf-status-box { text-align:center; padding: 20px; border-radius: 8px; margin-bottom: 30px; font-size: 20px; font-weight:bold; }
+        .pdf-pass { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .pdf-fail { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
     </style>
 </head>
 <body>
 
 <div id="loadingOverlay"><div class="spinner"></div><div style="margin-top:10px; font-weight:bold; color:var(--primary);">Processing...</div></div>
 
-<div id="reviewModal" class="modal-overlay">
-    <div class="modal">
-        <h3>Manager Review</h3>
-        <p><strong>Appeal Reason:</strong></p>
-        <div id="appealReasonText" style="background:#f9f9f9; padding:10px; border-left:3px solid var(--warning); margin-bottom:20px;"></div>
-        <div style="margin-bottom:15px; display:flex; gap:10px;">
-            <button class="btn btn-outline" onclick="setDecision('reject')">Reject (Keep Penalty)</button>
-            <button class="btn btn-accent" onclick="setDecision('accept')">Accept (Waive Penalty)</button>
-        </div>
-        <div id="penaltyEditSection" style="display:none; margin-bottom:15px;">
-            <label>Modified Penalty Amount ($):</label><input type="number" id="modPenalty" step="0.01">
-        </div>
-        <div style="text-align:right;"><button class="btn btn-outline" onclick="closeModal()">Cancel</button> <button class="btn btn-primary" onclick="confirmReview()">Confirm</button></div>
+<div id="pdf-template">
+    <div class="pdf-header">
+        <div class="pdf-logo">PropertyWize QC Hub</div>
+        <div class="pdf-title">Official Audit Report</div>
     </div>
-</div>
-
-<div id="vaModal" class="modal-overlay">
-    <div class="modal">
-        <h3>Submit Appeal</h3>
-        <textarea id="vaAppealInput" placeholder="Explain correction..."></textarea>
-        <div style="text-align:right;"><button class="btn btn-outline" onclick="document.getElementById('vaModal').style.display='none'">Cancel</button> <button class="btn btn-primary" onclick="submitVAAppeal()">Submit</button></div>
+    <div class="pdf-meta">
+        <div><strong>Date:</strong> <span id="pdf-date"></span></div>
+        <div><strong>Type:</strong> <span id="pdf-type"></span></div>
+        <div><strong>Property/Tenant:</strong> <span id="pdf-subject"></span></div>
+        <div><strong>Auditor:</strong> <span id="pdf-auditor"></span></div>
+    </div>
+    <div id="pdf-status" class="pdf-status-box"></div>
+    <h3>Audit Findings</h3>
+    <div id="pdf-content" style="line-height: 1.6;"></div>
+    <div style="margin-top:50px; border-top:1px solid #ccc; padding-top:10px; font-size:0.8rem; color:#777;">
+        Verified by PropertyWize QC System | Generated automatically.
     </div>
 </div>
 
 <div class="navbar">
-    <div class="brand">
-        <img src="small logo.jpg" alt="PW Logo" onerror="this.style.display='none'"> Property<span>Wize</span> QC Hub
-    </div>
-    
+    <div class="brand"><img src="small logo.jpg" alt="PW" onerror="this.style.display='none'"> PropertyWize QC Hub</div>
     <div>
         <select id="auditTypeSelect" class="mode-select" onchange="toggleAuditMode()">
             <option value="ledger">Tenant Ledger Audit</option>
             <option value="mgmt">Management Fee Audit</option>
         </select>
     </div>
-
     <div class="role-switch">
         <button class="role-btn active" id="btnManager" onclick="setRole('Manager')">Manager</button>
         <button class="role-btn" id="btnVA" onclick="setRole('VA')">Staff</button>
@@ -112,14 +99,12 @@
 <div class="container">
     <div class="sidebar">
         <div class="nav-item active" id="navAudit" onclick="showTab('auditTab')"><i class="fas fa-magic"></i> New Audit</div>
-        <div class="nav-item" onclick="showTab('historyTab')"><i class="fas fa-history"></i> Audit Log <span id="notifyBadge" class="badge bg-warn" style="display:none;">!</span></div>
+        <div class="nav-item" onclick="showTab('historyTab')"><i class="fas fa-history"></i> Audit Log</div>
         <div class="nav-item" id="navScore" onclick="showTab('scorecardTab')"><i class="fas fa-chart-line"></i> Scorecard</div>
     </div>
 
     <div class="main-content">
-        
         <div id="auditTab">
-            
             <div id="ledgerAuditSection">
                 <h2><i class="fas fa-file-invoice"></i> Tenant Ledger Audit</h2>
                 <div class="card">
@@ -166,15 +151,37 @@
                         </div>
                     </div>
                 </div>
+                
                 <div class="card" id="mgmtVerifyCard">
-                    <h3>2. Fee Parameters</h3>
-                    <div class="scanned-data">
-                        <div><label>Assign To</label><input type="text" id="assignVAMgmt" placeholder="VA Name..."></div>
-                        <div><label>Property Name</label><input type="text" id="mgmtPropName"></div>
-                        <div><label>Current Rent ($)</label><input type="number" id="mgmtRentAmt"></div>
-                        <div><label>Mgmt Fee (%)</label><input type="number" id="mgmtFeePct" placeholder="e.g. 8"></div>
+                    <h3>2. Fee Parameters (Smart Audit)</h3>
+                    <div class="scanned-data" style="grid-template-columns: 1fr 1fr 1fr;">
+                        <div>
+                            <label>Property Name</label>
+                            <input type="text" id="mgmtPropName" placeholder="Auto-detected from CSV...">
+                        </div>
+                        <div>
+                            <label>Mgmt Fee %</label>
+                            <input type="number" id="mgmtFeePct" placeholder="e.g. 10" value="10">
+                        </div>
+                        <div>
+                            <label>Assign To (VA)</label>
+                            <input type="text" id="assignVAMgmt" placeholder="VA Name...">
+                        </div>
                     </div>
-                    <button class="btn btn-accent" style="margin-top:15px;" onclick="runMgmtAudit()">Run Fee Audit</button>
+                    <div class="scanned-data" style="margin-top:10px; background:#e3f2fd; border:1px solid #90caf9;">
+                        <div>
+                            <label>Rent Amount (Jan/Old)</label>
+                            <input type="number" id="rentJan" placeholder="Start of Year Rent">
+                        </div>
+                        <div style="display:flex; align-items:center; justify-content:center; color:#003366; font-weight:bold;">
+                            <i class="fas fa-arrow-right"></i> Only fill both if rent changed <i class="fas fa-arrow-left"></i>
+                        </div>
+                        <div>
+                            <label>Rent Amount (Dec/New)</label>
+                            <input type="number" id="rentDec" placeholder="End of Year Rent (Optional)">
+                        </div>
+                    </div>
+                    <button class="btn btn-accent" style="margin-top:15px; width:100%;" onclick="runMgmtAudit()">🚀 Run Smart Audit</button>
                 </div>
             </div>
 
@@ -187,35 +194,18 @@
                 </div>
                 <br>
                 <div style="display:flex; gap:10px;">
-                    <button class="btn btn-primary" onclick="sendEmailApp()"><i class="fas fa-envelope"></i> Email</button>
-                    <button class="btn btn-outline" onclick="copyEmail()">Copy</button>
+                    <button class="btn btn-primary" onclick="sendEmailApp()"><i class="fas fa-envelope"></i> Open Email App</button>
+                    <button class="btn btn-outline" onclick="copyEmail()">Copy Text</button>
                     <button class="btn btn-accent" onclick="saveAudit()" style="margin-left:auto;">Save & Assign</button>
                 </div>
             </div>
         </div>
 
         <div id="historyTab" style="display:none;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <h2 id="historyTitle">Audit Log</h2>
-                <div id="vaFilter" style="display:none;"><input type="text" id="vaNameFilter" placeholder="Filter by Name..." onkeyup="renderHistory()"></div>
-            </div>
-            <div id="managerAlerts" class="alert-box">
-                <div><i class="fas fa-bell"></i> <strong>Attention:</strong> <span id="appealCount">0</span> pending appeals.</div>
-            </div>
+            <h2>Audit Log</h2>
             <div class="card">
                 <table id="historyTable">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Type</th>
-                            <th>Property / Tenant</th>
-                            <th>Assigned</th>
-                            <th>Status</th>
-                            <th>Errors</th>
-                            <th>Penalty</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th>Date</th><th>Type</th><th>Property / Tenant</th><th>Assigned</th><th>Status</th><th>Actions</th></tr></thead>
                     <tbody id="historyBody"></tbody>
                 </table>
             </div>
@@ -225,50 +215,26 @@
             <h2>Performance Scorecard</h2>
             <div class="card">
                 <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:20px; text-align:center;">
-                    <div style="padding:20px; background:#eef2f7; border-radius:8px;">
-                        <h1 style="color:var(--primary); margin:0;" id="totalAudits">0</h1>
-                        <span>Total Audits</span>
-                    </div>
-                    <div style="padding:20px; background:#eef2f7; border-radius:8px;">
-                        <h1 style="color:var(--accent); margin:0;" id="avgScore">100%</h1>
-                        <span>Avg Accuracy</span>
-                    </div>
-                    <div style="padding:20px; background:#eef2f7; border-radius:8px;">
-                        <h1 style="color:var(--danger); margin:0;" id="totalPenalty">$0</h1>
-                        <span>Total Penalties</span>
-                    </div>
+                    <div style="padding:20px; background:#eef2f7; border-radius:8px;"><h1 style="color:var(--primary); margin:0;" id="totalAudits">0</h1><span>Total Audits</span></div>
+                    <div style="padding:20px; background:#eef2f7; border-radius:8px;"><h1 style="color:var(--accent); margin:0;" id="avgScore">100%</h1><span>Avg Accuracy</span></div>
+                    <div style="padding:20px; background:#eef2f7; border-radius:8px;"><h1 style="color:var(--danger); margin:0;" id="totalPenalty">$0</h1><span>Total Penalties</span></div>
                 </div>
-                <br>
-                <button class="btn btn-primary" onclick="exportData()">Export CSV</button>
             </div>
         </div>
     </div>
-</div>
-
-<div id="pdfTemplate">
-    <header><h1>QC Audit Report</h1> <img src="small logo.jpg" style="height:60px;"></header>
-    <div class="meta">
-        <div><strong>Date:</strong> <span id="repDate"></span></div>
-        <div><strong>Type:</strong> <span id="repType"></span></div>
-        <div><strong>Subject:</strong> <span id="repSubject"></span></div>
-        <div><strong>Assigned:</strong> <span id="repVA"></span></div>
-        <div><strong>Penalty:</strong> <span id="repPenalty" style="color:red;"></span></div>
-    </div>
-    <h3>Findings</h3>
-    <div id="repFindings"></div>
-    <footer>Generated by PropertyWize QC Hub</footer>
 </div>
 
 <script>
     // --- SETUP ---
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
     let CURRENT_ROLE = 'Manager';
-    let EXTRACTED_LEDGER = []; // For Tenant Audit
-    let OWNER_STMT_DATA = [];  // For Mgmt Audit
+    let EXTRACTED_LEDGER = []; 
+    let OWNER_STMT_DATA = [];  
     let CURRENT_AUDIT_MODE = 'ledger';
-    let TEMP_AUDIT_ID = null;
+    let LAST_AUDIT_DATA = {}; // Stores temp data for saving
+    let AUDIT_HISTORY = {};   // Stores saved audits for PDF generation
+    let AUDIT_COUNTER = 0;
 
-    // --- TOGGLE MODES ---
     function toggleAuditMode() {
         const mode = document.getElementById('auditTypeSelect').value;
         CURRENT_AUDIT_MODE = mode;
@@ -283,7 +249,6 @@
         document.getElementById('btn' + (role === 'VA' ? 'VA' : 'Manager')).classList.add('active');
         document.getElementById('navAudit').style.display = role === 'Manager' ? 'block' : 'none';
         document.getElementById('navScore').style.display = role === 'Manager' ? 'block' : 'none';
-        document.getElementById('vaFilter').style.display = role === 'VA' ? 'block' : 'none';
         if(role === 'VA') showTab('historyTab'); else renderHistory();
     }
 
@@ -291,10 +256,9 @@
         document.querySelectorAll('.main-content > div').forEach(d => d.style.display = 'none');
         document.getElementById(id).style.display = 'block';
         if(id === 'historyTab') renderHistory();
-        if(id === 'scorecardTab') updateStats();
     }
 
-    // --- DATA EXTRACTION (TENANT LEDGER) ---
+    // --- PARSING ---
     async function extractText(file, limit=0) {
         const pdf = await pdfjsLib.getDocument(await file.arrayBuffer()).promise;
         let text = "";
@@ -308,14 +272,10 @@
         try {
             const text = await extractText(input.files[0], 2);
             document.getElementById('leaseStatus').innerText = "✅ Ready";
-            
             const rentMatch = text.match(/installments of[\s\S]{1,150}?\$([0-9,]+\.[0-9]{2})/i);
-            const depMatch = text.match(/Security Deposit shall mean[\s\S]{1,150}?\$([0-9,]+\.[0-9]{2})/i);
             const nameMatch = text.match(/Name:\s*([A-Za-z]+\s+[A-Za-z]+).*?DOB:/);
             const addrMatch = text.match(/Premises:[\s\S]*?address:[\s\S]*?([0-9].*?21[0-9]{3})/i);
-
             if(rentMatch) document.getElementById('scanRent').value = rentMatch[1].replace(/[$,]/g,'');
-            if(depMatch) document.getElementById('scanDeposit').value = depMatch[1].replace(/[$,]/g,'');
             if(nameMatch) document.getElementById('scanTenant').value = nameMatch[1].trim();
             if(addrMatch) document.getElementById('scanAddress').value = addrMatch[1].replace(/\s+/g, ' ').trim();
             document.getElementById('verificationCard').style.display = 'block';
@@ -335,284 +295,211 @@
             const amtMatch = rest.match(/-?[0-9,]+\.[0-9]{2}/g);
             if(amtMatch) {
                 const amount = parseFloat(amtMatch[0].replace(',',''));
-                const desc = rest.toLowerCase();
                 let type = 'Other';
-                if(desc.includes('rent') && !desc.includes('pet') && !desc.includes('ftp')) type = 'Base Rent';
-                else if(desc.includes('water') || desc.includes('util')) type = 'Utility';
-                else if(desc.includes('late')) type = 'Late Fee';
-                else if(desc.includes('ftp') || desc.includes('pet') || desc.includes('benefit')) type = 'Misc';
-                EXTRACTED_LEDGER.push({ date, amount, type, desc: rest.substring(0,50) });
+                if(rest.toLowerCase().includes('rent')) type = 'Base Rent';
+                EXTRACTED_LEDGER.push({ date, amount, type });
             }
         }
         document.getElementById('loadingOverlay').style.display = 'none';
     }
 
-    // --- DATA EXTRACTION (MGMT AUDIT) ---
-    async function processPMAgreement(input) {
-        // Placeholder for reading PM PDF - can assume user manually enters % for now for accuracy
-        document.getElementById('pmStatus').innerText = "✅ Ready"; 
-    }
+    function processPMAgreement(input) { document.getElementById('pmStatus').innerText = "✅ Ready"; }
 
     function processOwnerStmt(input) {
         Papa.parse(input.files[0], {
-            header: true,
+            header: false, 
             skipEmptyLines: true,
             complete: function(results) {
                 OWNER_STMT_DATA = results.data;
                 document.getElementById('stmtStatus').innerText = "✅ " + results.data.length + " Rows";
-                
-                // Try to guess Property Name from first row
-                if(results.data[0] && results.data[0]['Property']) {
-                    document.getElementById('mgmtPropName').value = results.data[0]['Property'];
-                }
+                if(results.data[1] && results.data[1][0]) document.getElementById('mgmtPropName').value = results.data[1][0]; 
             }
         });
     }
 
-    // --- AUDIT LOGIC 1: TENANT LEDGER ---
+    // --- AUDIT LOGIC ---
     function runAuditLogic() {
         const rent = parseFloat(document.getElementById('scanRent').value) || 0;
         const tenant = document.getElementById('scanTenant').value;
-        const addr = document.getElementById('scanAddress').value;
         const va = document.getElementById('assignVA').value || "Unassigned";
-        
-        let errors = [];
-        let rentBal = 0;
-        let misappliedTotal = 0;
-        const lateFeeCalc = parseFloat((rent * 0.05).toFixed(2));
-
+        let errors = []; 
         EXTRACTED_LEDGER.forEach(row => {
-            if(row.type === 'Base Rent' && row.amount > 0) {
-                if(Math.abs(row.amount - rent) > 1) {
-                    errors.push(`Rent Charge on ${row.date} ($${row.amount}) != Lease ($${rent})`);
-                    misappliedTotal += Math.abs(row.amount - rent);
-                }
-                rentBal += row.amount;
-            } else if (row.amount < 0) rentBal += row.amount;
-
-            if(row.amount < 0 && rentBal > 100) {
-                if(row.type === 'Utility' || row.type === 'Misc') {
-                    errors.push(`Misallocation on ${row.date}: Paid ${row.type} before Rent.`);
-                    misappliedTotal += Math.abs(row.amount);
-                }
-            }
-
-            if(row.type === 'Late Fee' && Math.abs(row.amount - lateFeeCalc) > 1) {
-                errors.push(`Incorrect Late Fee on ${row.date}: $${row.amount} (Expected $${lateFeeCalc})`);
-                misappliedTotal += Math.abs(row.amount - lateFeeCalc);
+            if(row.type === 'Base Rent' && Math.abs(row.amount - rent) > 1) {
+                errors.push(`Rent mismatch on ${row.date}: Paid $${row.amount}, Expected $${rent}`);
             }
         });
-
-        finishAudit(tenant + " (" + addr + ")", va, errors, misappliedTotal, 'Tenant Ledger');
+        
+        // Save state
+        LAST_AUDIT_DATA = { type: 'Tenant Ledger', subject: tenant, va: va, errors: errors, content: errors.length ? errors.join('<br>') : 'No discrepancies found.' };
+        displayResults(errors, tenant, va, "Tenant Ledger");
     }
 
-    // --- AUDIT LOGIC 2: MANAGEMENT FEE ---
     function runMgmtAudit() {
-        const prop = document.getElementById('mgmtPropName').value;
-        const rent = parseFloat(document.getElementById('mgmtRentAmt').value);
-        const pct = parseFloat(document.getElementById('mgmtFeePct').value);
-        const va = document.getElementById('assignVAMgmt').value;
+        const rentJan = parseFloat(document.getElementById('rentJan').value) || 0;
+        const rentDec = parseFloat(document.getElementById('rentDec').value) || rentJan; 
+        const feePct = parseFloat(document.getElementById('mgmtFeePct').value) || 0;
+        const propName = document.getElementById('mgmtPropName').value;
+        const va = document.getElementById('assignVAMgmt').value || "Unassigned";
         
-        const expectedFee = rent * (pct / 100);
+        const expectedFeeA = (rentJan * (feePct / 100)).toFixed(2);
+        const expectedFeeB = (rentDec * (feePct / 100)).toFixed(2);
+
         let errors = [];
-        let misappliedTotal = 0;
-        
-        // Group by Month
-        let monthlyData = {}; 
-        
-        OWNER_STMT_DATA.forEach(row => {
-            const dateStr = row['Date']; // Assume CSV has Date col
-            if(!dateStr) return;
-            const month = dateStr.substring(0, 7); // YYYY-MM or MM/YYYY
-            if(!monthlyData[month]) monthlyData[month] = { rent: 0, fees: 0 };
-            
-            const amt = parseFloat(row['Amount'] || row['Total'] || 0);
-            const desc = (row['Description'] || "").toLowerCase();
-            
-            if(desc.includes('rent income')) monthlyData[month].rent += amt;
-            if(desc.includes('management fee')) monthlyData[month].fees += Math.abs(amt);
-        });
+        let feesFound = [];
+        let foundAnyFee = false;
 
-        // Analyze Months
-        for (const [month, data] of Object.entries(monthlyData)) {
-            if(data.rent > 0) {
-                // Check if fee exists
-                if(data.fees === 0) {
-                    errors.push(`Missed Management Fee for ${month}. Collected Rent but charged $0.`);
-                    misappliedTotal += expectedFee;
-                } 
-                // Check fee accuracy (allow $5 variance)
-                else if (Math.abs(data.fees - expectedFee) > 5) {
-                    errors.push(`Incorrect Fee for ${month}. Charged $${data.fees}, Expected $${expectedFee.toFixed(2)} (${pct}% of Rent).`);
-                    misappliedTotal += Math.abs(data.fees - expectedFee);
+        OWNER_STMT_DATA.forEach((row, index) => {
+            if(!row[4]) return; 
+            const desc = row[4].toString().trim(); 
+            
+            if (desc.includes("Management Fees - Other")) {
+                foundAnyFee = true;
+                const amountVal = row[13]; 
+                const amount = Math.abs(parseFloat(amountVal ? amountVal.replace(/[$,]/g,'') : 0));
+                
+                const matchOld = Math.abs(amount - expectedFeeA) < 0.05;
+                const matchNew = Math.abs(amount - expectedFeeB) < 0.05;
+
+                if (matchOld || matchNew) {
+                    feesFound.push(`Match $${amount}`);
+                } else {
+                    feesFound.push(`Mismatch $${amount}`);
+                    errors.push(`Row ${index+1}: Fee was $${amount}. Expected $${expectedFeeA} or $${expectedFeeB}.`);
                 }
             }
-            // Vacancy Check (Simple logic: if rent is 0)
-            if(data.rent === 0) {
-                // errors.push(`Potential Vacancy in ${month} - Check if Vacancy Fee applies (Day 91).`);
-                // Note: kept as warning only, usually needs date math
-            }
-        }
+        });
 
-        // Penalty is 20% for Mgmt Audit
-        const penalty = (misappliedTotal * 0.20).toFixed(2);
-        
-        finishAudit(prop, va, errors, misappliedTotal, 'Management Fee', penalty);
+        if(!foundAnyFee) errors.push("CRITICAL: No 'Management Fees - Other' rows found in Column E.");
+
+        // Save state
+        LAST_AUDIT_DATA = { type: 'Management Fee', subject: propName, va: va, errors: errors, content: errors.length ? errors.join('<br>') : 'Fee calculations match expected rates.' };
+        displayResults(errors, propName, va, "Management Fee", feesFound.map(f => `<span class="badge bg-pass">${f}</span>`));
     }
 
-    function finishAudit(subject, va, errors, totalErr, type, customPenalty=null) {
-        const penalty = customPenalty ? customPenalty : (totalErr * 0.10).toFixed(2); // 10% default, 20% for mgmt
-        const score = Math.max(0, 100 - (errors.length * 10));
-        
-        document.getElementById('resultsCard').style.display = 'block';
-        let html = errors.length === 0 ? `<div class="badge bg-pass">PASS</div>` : `<h4 style="color:var(--danger)">${errors.length} Financial Errors</h4>`;
-        errors.forEach(e => html += `<div style="color:var(--danger)">• ${e}</div>`);
-        document.getElementById('auditReport').innerHTML = html;
+    function displayResults(errors, subject, va, type, extras=[]) {
+        const reportDiv = document.getElementById('auditReport');
+        const emailBox = document.getElementById('emailOutput');
+        const currentYear = new Date().getFullYear();
+        let auditTitle = type === "Management Fee" ? `Rental Income Management Fee Audit (${currentYear})` : type;
 
-        const date = new Date().toLocaleDateString();
-        let body = `URGENT: ${type} Audit Corrections Required\nSubject: ${subject}\nDate: ${date}\n\nErrors Detected:\n`;
-        errors.forEach(e => body += `[ ] ${e}\n`);
+        let html = "";
         
-        if(errors.length > 0) {
-            body += `\nTOTAL MISAPPLIED: $${totalErr.toFixed(2)}\nPENALTY: $${penalty}\n\n`;
-            body += `INSTRUCTIONS:\n1. Log into Dashboard (VA View).\n2. Find this audit.\n3. Appeal or Upload Proof.\n\nACTION REQUIRED:\nReply "I acknowledge" and attach proof.`;
+        if(errors.length === 0) {
+            LAST_AUDIT_DATA.status = 'Pass';
+            html = `
+            <div style="text-align:center; padding:20px; background:#e8f5e9; border:2px solid #28a745; border-radius:10px;">
+                <h3 style="color:#155724; margin-top:0;">${auditTitle}</h3>
+                <h1 style="color:#28a745; margin:5px 0;">🌟 100% ACCURACY 🌟</h1>
+                <p style="font-size:1.1rem; color:#155724;">Property: <strong>${subject}</strong></p>
+                <div style="margin-top:10px;">${extras.join(' ')}</div>
+            </div>`;
+            
+            emailBox.value = `Subject: ✅ QC PASSED: ${subject} - ${auditTitle}\n\nHi ${va},\n\nI have completed the ${auditTitle} for ${subject}.\n\n🌟 Score: 100% (Passed)\n\nGreat attention to detail. The fees were calculated correctly according to the agreement.\n\nKeep up the fantastic work!\n\nAudited by: ${CURRENT_ROLE}`;
+        
         } else {
-            body += `Audit Passed. No errors.`;
-        }
-        document.getElementById('emailOutput').value = body;
-
-        window.currentAudit = {
-            id: Date.now(),
-            date: date,
-            emailDate: new Date().toLocaleString(),
-            tenant: subject, // Reused for property name in Mgmt mode
-            addr: type,      // Storing Audit Type here for display
-            va, score, penalty,
-            errors,
-            status: errors.length === 0 ? 'Passed' : 'Action Req',
-            emailSubject: `${type} Audit - ${subject} - ${date}`,
-            emailBody: body
-        };
-        
-        document.getElementById('resultsCard').scrollIntoView({behavior: "smooth"});
-    }
-
-    // --- ACTIONS ---
-    function sendEmailApp() { window.location.href = `mailto:?subject=${encodeURIComponent(window.currentAudit.emailSubject)}&body=${encodeURIComponent(window.currentAudit.emailBody)}`; }
-    
-    function saveAudit() {
-        if(!window.currentAudit) return;
-        let history = JSON.parse(localStorage.getItem('pw_qc_data') || "[]");
-        history.push(window.currentAudit);
-        localStorage.setItem('pw_qc_data', JSON.stringify(history));
-        alert("Audit Saved.");
-        renderHistory();
-        updateStats();
-        window.currentAudit = null;
-        document.getElementById('resultsCard').style.display = 'none';
-        document.getElementById('verificationCard').style.display = 'none';
-    }
-
-    function renderHistory() {
-        const tbody = document.getElementById('historyBody');
-        tbody.innerHTML = '';
-        const history = JSON.parse(localStorage.getItem('pw_qc_data') || "[]");
-        const filter = document.getElementById('vaNameFilter').value.toLowerCase();
-        let appealCount = 0;
-
-        history.reverse().forEach((h) => {
-            if(CURRENT_ROLE === 'VA' && !h.va.toLowerCase().includes(filter) && filter !== "") return;
-            if(CURRENT_ROLE === 'Manager' && (h.status === 'Appealed' || h.status === 'Acknowledged')) appealCount++;
-
-            let badgeClass = h.status === 'Passed' || h.status === 'Corrected' || h.status === 'Appeal Accepted' ? 'bg-pass' : 
-                             h.status === 'Appealed' ? 'bg-warn' : 
-                             h.status === 'Acknowledged' ? 'bg-ack' : 'bg-fail';
+            LAST_AUDIT_DATA.status = 'Fail';
+            html = `
+            <div style="padding:15px; background:#fff3cd; border-left:5px solid #ffc107; border-radius:5px;">
+                <h3 style="margin-top:0; color:#856404;">⚠️ ${auditTitle} - Failed</h3>
+                <p><strong>Property:</strong> ${subject}</p>
+                <ul style="margin:0; padding-left:20px; color:#856404;">${errors.map(e => `<li>${e}</li>`).join('')}</ul>
+                <div style="margin-top:10px;">${extras.join(' ')}</div>
+            </div>
+            <div style="margin-top:15px; font-weight:bold;">👉 Next Steps: Please issue a credit or adjustment immediately.</div>`;
             
-            let actions = '';
-            if(CURRENT_ROLE === 'Manager') {
-                actions += `<button class="btn btn-sm btn-outline" onclick="downloadPDF(${h.id})"><i class="fas fa-file-pdf"></i></button> `;
-                actions += `<button class="btn btn-sm btn-danger" onclick="deleteAudit(${h.id})"><i class="fas fa-trash"></i></button>`;
-                if(h.status === 'Appealed') actions += ` <button class="btn btn-sm btn-primary" onclick="openReviewModal(${h.id})">Review</button>`;
-            } else {
-                if(h.status === 'Action Req') {
-                    actions += `<button class="btn btn-sm btn-outline" onclick="openVAModal(${h.id})">Appeal</button> `;
-                    actions += `<button class="btn btn-sm btn-accent" onclick="acknowledgeAudit(${h.id})">Accept</button> `;
-                    actions += `<button class="btn btn-sm btn-primary" onclick="uploadProof(${h.id})">Upload</button>`;
-                }
-            }
-
-            tbody.innerHTML += `
-                <tr>
-                    <td>${h.emailDate}</td>
-                    <td><span class="badge bg-type" style="font-size:0.6rem">${h.addr}</span></td>
-                    <td><strong>${h.tenant}</strong></td>
-                    <td>${h.va}</td>
-                    <td><span class="badge ${badgeClass}">${h.status}</span></td>
-                    <td>${h.errors.length}</td>
-                    <td>$${h.penalty}</td>
-                    <td>${actions}</td>
-                </tr>
-            `;
-        });
+            emailBox.value = `Subject: ⚠️ ACTION REQUIRED: ${auditTitle} Failed - ${subject}\n\nHi ${va},\n\nThe ${auditTitle} for ${subject} has flagged the following errors:\n\n${errors.map(e => `- ${e}`).join('\n')}\n\nNEXT STEPS:\n1. Please review the Owner Statement.\n2. Issue a manual adjustment/credit to correct the fee.\n3. Reply to this email once complete.\n\nThank you,\n${CURRENT_ROLE}`;
+        }
         
-        document.getElementById('notifyBadge').style.display = appealCount > 0 ? 'inline-block' : 'none';
-        document.getElementById('managerAlerts').style.display = appealCount > 0 ? 'flex' : 'none';
+        reportDiv.innerHTML = html;
+        document.getElementById('resultsCard').style.display = 'block';
     }
 
-    // --- ACTIONS & UTILS ---
-    function deleteAudit(id) { if(confirm("Delete?")) { updateStore(h => h.id !== id, true); } }
-    function openVAModal(id) { TEMP_AUDIT_ID = id; document.getElementById('vaModal').style.display = 'flex'; }
-    function submitVAAppeal() { updateItem(TEMP_AUDIT_ID, { status: "Appealed", appealReason: document.getElementById('vaAppealInput').value }); closeModal(); }
-    function acknowledgeAudit(id) { if(confirm("Accept?")) updateItem(id, { status: "Acknowledged" }); }
-    function uploadProof(id) { alert("Proof uploaded."); updateItem(id, { status: "Corrected" }); }
-    function openReviewModal(id) { 
-        TEMP_AUDIT_ID = id; 
-        document.getElementById('appealReasonText').innerText = getStore().find(h=>h.id===id).appealReason; 
-        document.getElementById('reviewModal').style.display = 'flex'; 
+    function saveAudit() {
+        AUDIT_COUNTER++;
+        const id = AUDIT_COUNTER;
+        const date = new Date().toLocaleDateString();
+        
+        // Store Full Data for PDF
+        AUDIT_HISTORY[id] = { ...LAST_AUDIT_DATA, date: date, id: id, auditor: CURRENT_ROLE };
+
+        // Add Row to Table
+        const table = document.getElementById('historyBody');
+        const row = table.insertRow(0);
+        const badgeClass = LAST_AUDIT_DATA.status === 'Pass' ? 'bg-pass' : 'bg-fail';
+        
+        row.innerHTML = `
+            <td>${date}</td>
+            <td>${LAST_AUDIT_DATA.type}</td>
+            <td>${LAST_AUDIT_DATA.subject}</td>
+            <td>${LAST_AUDIT_DATA.va}</td>
+            <td><span class="badge ${badgeClass}">${LAST_AUDIT_DATA.status.toUpperCase()}</span></td>
+            <td>
+                <button class="btn btn-outline" style="padding:4px 8px;" onclick="downloadPDF(${id})" title="Download PDF"><i class="fas fa-file-pdf" style="color:#d32f2f;"></i> PDF</button>
+                <button class="btn btn-outline" style="padding:4px 8px;" onclick="deleteRow(this)" title="Delete"><i class="fas fa-trash" style="color:#555;"></i></button>
+            </td>
+        `;
+
+        alert("Audit saved! You can now download the PDF Report from the Log.");
+        showTab('historyTab');
     }
-    function setDecision(d) { document.getElementById('penaltyEditSection').style.display = d==='accept'?'block':'none'; document.getElementById('modPenalty').value=0; }
-    function confirmReview() {
-        const waive = document.getElementById('penaltyEditSection').style.display === 'block';
-        updateItem(TEMP_AUDIT_ID, { status: waive?"Appeal Accepted":"Action Req", penalty: waive?document.getElementById('modPenalty').value:getStore().find(h=>h.id===TEMP_AUDIT_ID).penalty });
-        closeModal();
+
+    function deleteRow(btn) {
+        if(confirm("Are you sure you want to delete this audit log?")) {
+            const row = btn.parentNode.parentNode;
+            row.parentNode.removeChild(row);
+        }
     }
-    function closeModal() { document.querySelectorAll('.modal-overlay').forEach(m=>m.style.display='none'); }
-    
+
     function downloadPDF(id) {
-        let item = getStore().find(h => h.id === id);
-        document.getElementById('repDate').innerText = item.emailDate;
-        document.getElementById('repType').innerText = item.addr; // Type stored here
-        document.getElementById('repSubject').innerText = item.tenant;
-        document.getElementById('repVA').innerText = item.va;
-        document.getElementById('repPenalty').innerText = "$" + item.penalty;
-        document.getElementById('repFindings').innerHTML = item.errors.map(e=>`<div class="finding">${e}</div>`).join('');
+        const data = AUDIT_HISTORY[id];
+        if(!data) return alert("Error: Data not found.");
+
+        // Populate Template
+        document.getElementById('pdf-date').innerText = data.date;
+        document.getElementById('pdf-type').innerText = data.type;
+        document.getElementById('pdf-subject').innerText = data.subject;
+        document.getElementById('pdf-auditor').innerText = data.auditor;
         
-        const el = document.getElementById('pdfTemplate');
-        el.style.display = 'block';
-        html2pdf(el, { margin: 10, filename: `Audit_${item.tenant}.pdf` }).then(() => el.style.display = 'none');
+        const statusDiv = document.getElementById('pdf-status');
+        if(data.status === 'Pass') {
+            statusDiv.innerText = "PASS - 100% ACCURACY";
+            statusDiv.className = "pdf-status-box pdf-pass";
+        } else {
+            statusDiv.innerText = "FAIL - DISCREPANCIES FOUND";
+            statusDiv.className = "pdf-status-box pdf-fail";
+        }
+
+        document.getElementById('pdf-content').innerHTML = data.content;
+
+        // Generate PDF
+        const element = document.getElementById('pdf-template');
+        element.style.display = 'block';
+        
+        const opt = {
+            margin:       0.5,
+            filename:     `Audit_Report_${data.subject}_${data.date.replace(/\//g,'-')}.pdf`,
+            image:        { type: 'jpeg', quality: 0.98 },
+            html2canvas:  { scale: 2 },
+            jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+        };
+
+        html2pdf().set(opt).from(element).save().then(() => {
+            element.style.display = 'none';
+        });
     }
 
-    function getStore() { return JSON.parse(localStorage.getItem('pw_qc_data') || "[]"); }
-    function updateStore(filterFn, save) { 
-        if(save) localStorage.setItem('pw_qc_data', JSON.stringify(getStore().filter(filterFn)));
-        renderHistory(); updateStats();
+    function sendEmailApp() {
+        const body = encodeURIComponent(document.getElementById('emailOutput').value);
+        window.location.href = `mailto:?subject=QC Audit Results&body=${body}`;
     }
-    function updateItem(id, updates) {
-        let data = getStore();
-        Object.assign(data.find(h=>h.id===id), updates);
-        localStorage.setItem('pw_qc_data', JSON.stringify(data));
-        renderHistory(); updateStats();
+
+    function copyEmail() {
+        document.getElementById("emailOutput").select();
+        document.execCommand("copy");
+        alert("Email text copied!");
     }
-    function updateStats() {
-        let data = getStore();
-        let pen = data.reduce((a,b)=>a+parseFloat(b.penalty),0);
-        document.getElementById('totalAudits').innerText = data.length;
-        document.getElementById('totalPenalty').innerText = '$'+pen.toFixed(2);
-    }
-    function copyEmail() { document.getElementById('emailOutput').select(); document.execCommand('copy'); alert("Copied!"); }
-    
-    // Init
-    updateStats();
+
+    function renderHistory() {} 
 </script>
 </body>
 </html>
