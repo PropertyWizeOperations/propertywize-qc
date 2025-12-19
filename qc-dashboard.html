@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PropertyWize QC Hub V13.0 (Final & Complete)</title>
+<title>PropertyWize QC Hub V28.0 (Re-Run & TAT)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -49,29 +48,31 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
 .btn-warn { background: var(--warning); color: #333; }
 .btn:disabled { background: #ccc; cursor: not-allowed; opacity: 0.6; }
 
+/* TAT ALERT BOX */
+.tat-alert-box { background: #ffebee; border: 1px solid #ffcdd2; padding: 20px; border-radius: 8px; margin-bottom: 20px; display: none; border-left: 5px solid var(--danger); }
+.tat-header { color: #c62828; font-weight: bold; font-size: 1.1rem; display: flex; align-items: center; gap: 10px; }
+
 /* Boxes */
 .buildium-check-box { background: #e8f0fe; border: 1px solid #4285f4; padding:20px; border-radius:8px; margin-bottom:20px; }
 .rent-schedule-box { display:none; margin-top:15px; background: #fff; border:1px solid #ccc; padding:15px; border-radius:6px; }
 .stagnation-box { background: #fff3cd; border: 1px solid #ffeeba; padding: 15px; border-radius: 6px; margin-top: 15px; border-left: 5px solid #ffc107; display:none; }
+.missing-lease-box { background: #fff8e1; border: 1px solid #ffecb3; padding: 15px; border-radius: 6px; margin-top: 15px; border-left: 5px solid #ff9800; display:none; }
+
 .badge { padding: 4px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; }
 .bg-pass { background: #d4edda; color: #155724; } 
 .bg-fail { background: #f8d7da; color: #721c24; }
 .bg-warn { background: #fff3cd; color: #856404; }
 
+/* Validation Alerts */
+.lease-data-box { font-size: 0.85rem; color: #004085; background: #cce5ff; padding: 10px; border-radius: 4px; margin-top: 5px; display:none; border:1px solid #b8daff; text-align:left; width:100%; word-wrap: break-word;}
+.lease-mismatch { color: #d9534f; font-weight:bold; font-size:0.9rem; display:none; margin-top:5px; }
+
 /* Modal */
 .modal-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; display:none; justify-content:center; align-items:center; }
 .modal { background:white; padding:30px; border-radius:8px; width:500px; box-shadow:0 4px 12px rgba(0,0,0,0.2); }
 
-/* PDF Styles - SAFE TABLE LAYOUT */
-#pdf-template { 
-    display: none; 
-    width: 700px; 
-    padding: 30px; 
-    font-family: 'Helvetica', sans-serif; 
-    background: white; 
-    color: #333; 
-    box-sizing: border-box;
-}
+/* PDF Styles */
+#pdf-template { display: none; width: 700px; padding: 30px; font-family: 'Helvetica', sans-serif; background: white; color: #333; box-sizing: border-box; }
 .pdf-header-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; border-bottom: 3px solid #003366; padding-bottom: 10px; }
 .pdf-header-table td { vertical-align: middle; }
 .pdf-logo-cell { text-align: left; width: 40%; }
@@ -106,9 +107,7 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
 <div id="pdf-template">
     <table class="pdf-header-table">
         <tr>
-            <td class="pdf-logo-cell">
-                <img id="pdfLogo" class="pdf-logo-img" style="display:none;">
-            </td>
+            <td class="pdf-logo-cell"><img id="pdfLogo" class="pdf-logo-img" style="display:none;"></td>
             <td class="pdf-info-cell">
                 <div class="pdf-title">AUDIT REPORT</div>
                 <div class="pdf-meta">
@@ -152,13 +151,12 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
 
 <div class="navbar">
     <div class="brand">
-        <i class="fas fa-shield-alt"></i> PropertyWize QC Hub V13.0
+        <i class="fas fa-shield-alt"></i> PropertyWize QC Hub V28.0
         <select id="auditTypeSelect" class="mode-select" onchange="toggleAuditMode()">
             <option value="ledger">Tenant Ledger Audit</option>
             <option value="mgmt">Management Fee Audit</option>
         </select>
     </div>
-    
     <div class="logo-upload-container" onclick="document.getElementById('logoInput').click()">
         <span class="logo-text" id="logoText"><i class="fas fa-upload"></i> Click to Add Logo</span>
         <img id="logoPreview" style="display:none;">
@@ -170,14 +168,44 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
     <div class="sidebar">
         <div class="nav-item active" id="navAudit" onclick="showTab('auditTab')"><i class="fas fa-magic"></i> New Audit</div>
         <div class="nav-item" onclick="showTab('historyTab')"><i class="fas fa-history"></i> Audit Log</div>
+        <div class="nav-item" onclick="showTab('scoreTab')"><i class="fas fa-chart-bar"></i> Scorecard</div>
         <div style="margin-top:auto; padding:20px;">
             <button class="btn btn-warn" onclick="clearSystemData()"><i class="fas fa-trash"></i> Reset Data</button>
         </div>
     </div>
 
     <div class="main-content">
+        <div id="tatAlertBox" class="tat-alert-box">
+            <div class="tat-header"><i class="fas fa-clock"></i> 🚨 OVERDUE FOLLOW-UP REQUIRED (>1 Business Day)</div>
+            <p>The following audits are pending/failed and have exceeded the 24-hour turnaround time. Follow up with EPM/Finance immediately.</p>
+            <ul id="tatList" style="margin:10px 0; font-weight:bold;"></ul>
+            <textarea id="tatEmailTemplate" rows="4" readonly style="width:100%; border:1px solid #ffcdd2; background:#fff;">Subject: URGENT: QC Audit Follow-Up Required\n\nHello Team,\n\nThe following QC Audits are flagged as PENDING/FAILED and have exceeded the 1-business-day turnaround time. Please provide the requested documents or updates immediately to clear these flags.\n\nThank you,\nQC Team</textarea>
+            <br><button class="btn btn-danger" onclick="copyTatEmail()" style="margin-top:5px;">Copy Follow-Up Email</button>
+        </div>
+
+        <div id="scoreTab" style="display:none;">
+            <h2>Performance Scorecard</h2>
+            <div class="score-grid">
+                <div class="score-box">
+                    <h1 class="score-val" id="scoreTotal">0</h1>
+                    <div class="score-label">Total Audits</div>
+                </div>
+                <div class="score-box">
+                    <h1 class="score-val" id="scorePass" style="color:var(--accent);">0%</h1>
+                    <div class="score-label">Pass Rate</div>
+                </div>
+                <div class="score-box">
+                    <h1 class="score-val" id="scorePenalty" style="color:var(--danger);">$0</h1>
+                    <div class="score-label">Total Penalties (10%)</div>
+                </div>
+            </div>
+            <div class="card">
+                <h3>Penalty Log</h3>
+                <p>Penalties are assessed at 10% of total financial error per failed audit.</p>
+            </div>
+        </div>
+
         <div id="auditTab">
-            
             <div id="ledgerAuditSection">
                 <h2><i class="fas fa-file-invoice-dollar"></i> Tenant Ledger Audit</h2>
                 <div class="card">
@@ -186,54 +214,55 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
                         <div style="font-weight:bold; color:var(--primary);">QC Ref: <span id="qcRefDisplay">...</span></div>
                     </div>
                     <div class="scanned-data" style="grid-template-columns: 1fr 1fr;">
-                        <div><label>Assign To (Fin. Coordinator)</label><input type="text" id="assignVA" placeholder="Name"></div>
-                        <div><label>Buildium Task # (Required)</label><input type="text" id="mainTaskNumber" placeholder="#12345"></div>
+                        <div><label>Assign To</label><input type="text" id="assignVA" placeholder="Name"></div>
+                        <div><label>Buildium Task #</label><input type="text" id="mainTaskNumber" placeholder="#12345"></div>
                         <div><label>Tenant Name</label><input type="text" id="scanTenant"></div>
                         <div><label>Property Address</label><input type="text" id="propAddress"></div>
                     </div>
+                    <hr style="border-top:1px solid #eee; margin:20px 0;">
                     
-                    <hr style="border:0; border-top:1px solid #eee; margin:20px 0;">
-
                     <div class="buildium-check-box">
                         <label style="font-size:1.1rem; color:#003366; display:block; margin-bottom:10px;">
                             <i class="fas fa-search"></i> <strong>Buildium Cross-Check</strong>
                         </label>
-                        <p style="margin-bottom:15px;">Search <strong>Tenant Profile > Leases</strong>. How many active/signed leases cover this audit year?</p>
                         <div style="display:flex; gap:20px;">
-                            <label style="cursor:pointer;"><input type="radio" name="leaseCheck" value="single" onchange="toggleLeaseLogic('single')"> <strong>Single Lease (Constant)</strong></label>
-                            <label style="cursor:pointer;"><input type="radio" name="leaseCheck" value="multi" onchange="toggleLeaseLogic('multi')"> <strong>Multiple/Renewal (Split)</strong></label>
+                            <label style="cursor:pointer;"><input type="radio" name="leaseCheck" value="single" onchange="toggleLeaseLogic('single')"> <strong>Single Lease</strong></label>
+                            <label style="cursor:pointer;"><input type="radio" name="leaseCheck" value="multi" onchange="toggleLeaseLogic('multi')"> <strong>Multiple/Split</strong></label>
                         </div>
                         
                         <div id="logicSingle" class="rent-schedule-box">
                             <p><strong>Verification:</strong> Verify constant rent.</p>
                             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
-                                <div><label>Monthly Rent ($)</label><input type="number" id="rentConst"></div>
-                                <div><label>Original Lease Start</label><input type="date" id="leaseStartInput"></div>
+                                <div>
+                                    <label>Rent ($)</label>
+                                    <input type="number" id="rentConst" onchange="validateRentInput(this)">
+                                    <div id="rentConstMismatch" class="lease-mismatch">⚠️ Input does NOT match Lease PDF.</div>
+                                </div>
+                                <div><label>Lease Start</label><input type="date" id="leaseStartInput"></div>
                             </div>
                         </div>
-
+                        
                         <div id="logicMulti" class="rent-schedule-box">
                             <p><strong>Verification:</strong> Verify split schedule.</p>
                             <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px;">
-                                <div><label>Old Rent (Jan 1)</label><input type="number" id="rentOld"></div>
-                                <div><label>New Rent (Dec 31)</label><input type="number" id="rentNew"></div>
-                                <div><label>Change Month</label>
-                                    <select id="changeMonth">
-                                        <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option><option value="4">Apr</option>
-                                        <option value="5">May</option><option value="6">Jun</option><option value="7">Jul</option><option value="8">Aug</option>
-                                        <option value="9">Sep</option><option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
-                                    </select>
-                                </div>
+                                <div><label>Old Rent</label><input type="number" id="rentOld"></div>
+                                <div><label>New Rent</label><input type="number" id="rentNew"></div>
+                                <div><label>Month</label><select id="changeMonth">
+                                    <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
+                                    <option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option>
+                                    <option value="7">July</option><option value="8">August</option><option value="9">Sep</option>
+                                    <option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+                                </select></div>
                             </div>
                             <div class="drop-zone" id="dz-renewal" onclick="document.getElementById('renewalFile').click()" style="margin-top:15px;">
                                 <div>Upload Renewal PDF</div>
                                 <input type="file" id="renewalFile" accept=".pdf" style="display:none" onchange="processFile(this, 'renewal')">
                                 <div id="renewalStatus" style="color:var(--accent);"></div>
+                                <div id="renewalData" class="lease-data-box"></div>
                             </div>
                         </div>
                     </div>
                 </div>
-
                 <div class="card">
                     <h3>2. Source Documents</h3>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
@@ -246,9 +275,10 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
                             <div><strong>Original Lease (PDF)</strong></div>
                             <input type="file" id="leaseFile" accept=".pdf" style="display:none" onchange="processFile(this, 'lease')">
                             <div id="leaseStatus" style="color:var(--accent);"></div>
+                            <div id="leaseData" class="lease-data-box"></div>
                         </div>
                     </div>
-                    <button class="btn btn-accent" style="margin-top:20px; width:100%; font-size:1.1rem;" onclick="runLedgerAudit()">🚀 Run Ledger Audit</button>
+                    <button class="btn btn-accent" style="margin-top:20px; width:100%;" onclick="runLedgerAudit()">🚀 Run Ledger Audit</button>
                 </div>
             </div>
 
@@ -259,27 +289,47 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
                         <h3>1. Agreement Parameters</h3>
                         <div style="font-weight:bold; color:var(--primary);">QC Ref: <span id="qcRefDisplayMgmt">...</span></div>
                     </div>
-                    
                     <div class="scanned-data" style="grid-template-columns: 1fr 1fr;">
-                        <div><label>Property Name</label><input type="text" id="mgmtProp" placeholder="Enter Property Name"></div>
-                        <div><label>Assign To</label><input type="text" id="mgmtAssign" placeholder="Fin. Coordinator"></div>
-                        <div><label>Mgmt Fee %</label><input type="number" id="mgmtFeePct" placeholder="e.g. 10"></div>
-                        <div><label>Current Rent ($)</label><input type="number" id="mgmtRent" placeholder="Monthly Rent Amount"></div>
+                        <div><label>Property</label><input type="text" id="mgmtProp"></div>
+                        <div><label>Assign To</label><input type="text" id="mgmtAssign"></div>
+                        <div><label>Fee %</label><input type="number" id="mgmtFeePct"></div>
+                        <div><label>Min. Fee ($)</label><input type="number" id="mgmtMin" value="0"></div>
+                    </div>
+                    
+                    <div class="buildium-check-box" style="margin-top:15px;">
+                        <label style="color:#003366;"><strong>Did Rent Change during this period?</strong></label>
+                        <div style="margin-top:5px;">
+                            <input type="radio" name="mgmtRentCheck" value="no" checked onchange="toggleMgmtRent('no')"> No
+                            <input type="radio" name="mgmtRentCheck" value="yes" onchange="toggleMgmtRent('yes')"> Yes
+                        </div>
+                        
+                        <div id="mgmtRentSingle" style="margin-top:10px;">
+                            <label>Current Rent ($)</label>
+                            <input type="number" id="mgmtRentA">
+                        </div>
+                        
+                        <div id="mgmtRentMulti" style="display:none; margin-top:10px; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
+                            <div><label>Old Rent</label><input type="number" id="mgmtRentOld"></div>
+                            <div><label>New Rent</label><input type="number" id="mgmtRentNew"></div>
+                            <div><label>Change Month</label><select id="mgmtChangeMonth">
+                                <option value="1">Jan</option><option value="6">Jun</option><option value="7">Jul</option>
+                            </select></div>
+                        </div>
                     </div>
 
                     <div style="margin-top:20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                         <div class="drop-zone" onclick="document.getElementById('mgmtAgreementFile').click()">
-                            <i class="fas fa-handshake fa-2x"></i> <div><strong>Mgmt Agreement (PDF)</strong><br><small>Required</small></div>
+                            <div><strong>Mgmt Agreement (PDF)</strong></div>
                             <input type="file" id="mgmtAgreementFile" accept=".pdf" style="display:none" onchange="processFile(this, 'mgmtPdf')">
                             <div id="mgmtPdfStatus" style="color:var(--accent);"></div>
                         </div>
                         <div class="drop-zone" onclick="document.getElementById('mgmtStmtFile').click()">
-                            <i class="fas fa-file-csv fa-2x"></i> <div><strong>Owner Statement (CSV)</strong><br><small>Required</small></div>
+                            <div><strong>Owner Statement (CSV)</strong></div>
                             <input type="file" id="mgmtStmtFile" accept=".csv" style="display:none" onchange="processFile(this, 'mgmtCsv')">
                             <div id="mgmtCsvStatus" style="color:var(--accent);"></div>
                         </div>
                     </div>
-                    <button class="btn btn-accent" style="margin-top:20px; width:100%;" onclick="runMgmtAudit()">🚀 Verify Management Fees</button>
+                    <button class="btn btn-accent" style="margin-top:20px; width:100%;" onclick="runMgmtAudit()">🚀 Verify Fees (Greater Of Logic)</button>
                 </div>
             </div>
 
@@ -287,9 +337,24 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
                 <h3>3. Audit Results</h3>
                 <div id="finResultBox"></div>
 
+                <div id="missingLeaseWorkflow" class="missing-lease-box">
+                    <h4 style="margin-top:0; color:#003366;"><i class="fas fa-file-contract"></i> ⚠️ Pending Proof of Lease</h4>
+                    <p>The Ledger matches your input, but the input amount is not found in the uploaded Lease PDF.</p>
+                    
+                    <label><strong>Buildium Task Note (Finance & Escalation Combined):</strong></label>
+                    <textarea id="financeMissingLeaseTemplate" rows="8" readonly style="width:100%; font-family:monospace; background:#fff; margin-bottom:5px; border:1px solid #ddd;"></textarea>
+                    
+                    <button class="btn btn-primary" onclick="copyMissingLeaseNote()">Copy Task Note</button>
+                    
+                    <div style="margin-top:10px;">
+                        <label><strong>Enter Task # of Notification:</strong></label>
+                        <input type="text" id="proofTaskNum" placeholder="e.g. Task #123" onkeyup="checkProofTask()">
+                    </div>
+                </div>
+
                 <div id="opsWorkflow" class="stagnation-box">
-                    <h4 style="margin-top:0; color:#856404;"><i class="fas fa-exclamation-triangle"></i> Operational Flag: Rent Stagnation</h4>
-                    <p>Rent unchanged > 12 months. Notify <strong>Operations Manager</strong>.</p>
+                    <h4 style="margin-top:0; color:#856404;"><i class="fas fa-exclamation-triangle"></i> Alert: Rent Stagnation</h4>
+                    <p>Notify <strong>Operations Manager</strong>.</p>
                     <textarea id="opsCommentTemplate" rows="8" readonly style="width:100%; font-family:monospace; background:#fff; margin-bottom:5px; border:1px solid #ddd;"></textarea>
                     <button class="btn btn-outline" onclick="copyOpsComment()">Copy Note</button>
                     <input type="text" id="opsTaskProof" placeholder="Task # Sent to Ops" onkeyup="checkOpsProof()" style="margin-top:10px;">
@@ -312,7 +377,7 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
             <h2>Audit Log</h2>
             <div class="card">
                 <table id="historyTable" style="width:100%; border-collapse:collapse;">
-                    <thead><tr style="background:#eee; text-align:left;"><th style="padding:10px;">Date</th><th>QC Ref</th><th>Type</th><th>Subject</th><th>Result</th><th>Ops Status</th><th>PDF</th></tr></thead>
+                    <thead><tr style="background:#eee; text-align:left;"><th style="padding:10px;">Date</th><th>QC Ref</th><th>Type</th><th>Result</th><th>Penalty</th><th>Ops Status</th><th>Action</th></tr></thead>
                     <tbody id="historyBody"></tbody>
                 </table>
             </div>
@@ -328,10 +393,11 @@ let FILES = { csv: false, lease: false, renewal: false, mgmtCsv: false, mgmtPdf:
 let CURRENT_AUDIT = {};
 let AUDIT_LOG = {}; 
 let QC_REF = "QC-" + Math.floor(100000 + Math.random() * 900000);
+let LEASE_RENTS_FOUND = [];
+let IS_LEASE_MISSING = false;
 let EDITING_ID = null;
 let LOGO_DATA = null;
 
-// --- INIT APP ---
 function initApp() {
     const savedLogo = localStorage.getItem('pw_qc_logo');
     if(savedLogo) {
@@ -344,24 +410,90 @@ function initApp() {
     if(savedHistory) {
         AUDIT_LOG = JSON.parse(savedHistory);
         Object.keys(AUDIT_LOG).reverse().forEach(key => renderHistoryRow(key, false));
+        updateScorecard();
+        checkTAT(); // Run TAT Check
     }
     document.getElementById('qcRefDisplay').innerText = QC_REF;
     document.getElementById('qcRefDisplayMgmt').innerText = QC_REF;
 }
 
-function saveSystemData() {
-    localStorage.setItem('pw_qc_logo', LOGO_DATA || "");
-    localStorage.setItem('pw_qc_history', JSON.stringify(AUDIT_LOG));
-}
+// --- TAT CHECK ---
+function checkTAT() {
+    const now = new Date();
+    const overdue = [];
+    Object.values(AUDIT_LOG).forEach(a => {
+        if(a.status === 'PASS') return;
+        const auditDate = new Date(a.date);
+        // Simple day diff
+        const diffTime = Math.abs(now - auditDate);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+        
+        if(diffDays > 1) { // Greater than 1 day
+            overdue.push(`${a.qcRef} - ${a.tenant || a.prop}`);
+        }
+    });
 
-function clearSystemData() {
-    if(confirm("Are you sure? This will delete your saved Logo and Audit History.")) {
-        localStorage.clear();
-        location.reload();
+    if(overdue.length > 0) {
+        document.getElementById('tatAlertBox').style.display = 'block';
+        document.getElementById('tatList').innerHTML = overdue.map(i => `<li>${i}</li>`).join('');
     }
 }
 
-// --- LOGIC ---
+function copyTatEmail() {
+    document.getElementById('tatEmailTemplate').select();
+    document.execCommand('copy');
+}
+
+// --- RE-RUN LOGIC ---
+function reRunAudit(id) {
+    const old = AUDIT_LOG[id];
+    if(!old) return;
+
+    // Reload Data
+    document.getElementById('scanTenant').value = old.tenant || "";
+    document.getElementById('propAddress').value = old.prop || "";
+    document.getElementById('mainTaskNumber').value = old.task || "";
+    
+    // Switch to correct tab
+    if(old.type === 'Ledger') {
+        document.getElementById('auditTypeSelect').value = 'ledger';
+        toggleAuditMode();
+    } else {
+        document.getElementById('auditTypeSelect').value = 'mgmt';
+        toggleAuditMode();
+    }
+
+    // NEW REF
+    QC_REF = "QC-" + Math.floor(100000 + Math.random() * 900000);
+    document.getElementById('qcRefDisplay').innerText = QC_REF;
+    document.getElementById('qcRefDisplayMgmt').innerText = QC_REF;
+
+    showTab('auditTab');
+    alert(`Re-Run Initiated.\n\nOld Data Loaded.\nNew QC Ref: ${QC_REF}\n\nPlease upload CORRECTED documents and Run Audit again.`);
+}
+
+function updateScorecard() {
+    const audits = Object.values(AUDIT_LOG);
+    const total = audits.length;
+    const passed = audits.filter(a => a.status === 'PASS').length;
+    const rate = total === 0 ? 0 : Math.round((passed / total) * 100);
+    const penalties = audits.reduce((sum, a) => sum + (a.penaltyAmt || 0), 0);
+    
+    document.getElementById('scoreTotal').innerText = total;
+    document.getElementById('scorePass').innerText = rate + "%";
+    document.getElementById('scorePenalty').innerText = "$" + penalties.toFixed(2);
+}
+
+function saveSystemData() {
+    localStorage.setItem('pw_qc_logo', LOGO_DATA || "");
+    localStorage.setItem('pw_qc_history', JSON.stringify(AUDIT_LOG));
+    updateScorecard();
+}
+
+function clearSystemData() {
+    if(confirm("Delete all data?")) { localStorage.clear(); location.reload(); }
+}
+
 function toggleAuditMode() {
     const mode = document.getElementById('auditTypeSelect').value;
     document.getElementById('ledgerAuditSection').style.display = mode === 'ledger' ? 'block' : 'none';
@@ -372,6 +504,10 @@ function toggleLeaseLogic(mode) {
     document.getElementById('logicSingle').style.display = mode === 'single' ? 'block' : 'none';
     document.getElementById('logicMulti').style.display = mode === 'multi' ? 'block' : 'none';
 }
+function toggleMgmtRent(val) {
+    document.getElementById('mgmtRentSingle').style.display = val === 'no' ? 'block' : 'none';
+    document.getElementById('mgmtRentMulti').style.display = val === 'yes' ? 'grid' : 'none';
+}
 
 function loadLogo(input) {
     if(input.files && input.files[0]) {
@@ -381,7 +517,7 @@ function loadLogo(input) {
             document.getElementById('logoPreview').src = LOGO_DATA;
             document.getElementById('logoPreview').style.display = 'block';
             document.getElementById('logoText').style.display = 'none';
-            saveSystemData(); 
+            saveSystemData();
         }
         reader.readAsDataURL(input.files[0]);
     }
@@ -390,45 +526,101 @@ function loadLogo(input) {
 function processFile(input, type) {
     if(input.files.length === 0) return;
     if(type === 'csv' || type === 'mgmtCsv') {
-        Papa.parse(input.files[0], { header: true, skipEmptyLines: true, complete: res => {
-            if(type === 'csv') { LEDGER_CSV = res.data; document.getElementById('stmtStatus').innerText = "✅ Loaded"; FILES.csv = true; }
-            else { MGMT_CSV = res.data; document.getElementById('mgmtCsvStatus').innerText = "✅ Loaded"; FILES.mgmtCsv = true; }
+        Papa.parse(input.files[0], { header: false, skipEmptyLines: true, complete: res => {
+            if(type === 'csv') { 
+                Papa.parse(input.files[0], { header: true, complete: r => {
+                    LEDGER_CSV = r.data; document.getElementById('stmtStatus').innerText = "✅ Loaded"; FILES.csv = true;
+                }});
+            }
+            else { 
+                MGMT_CSV = res.data; document.getElementById('mgmtCsvStatus').innerText = "✅ Loaded"; FILES.mgmtCsv = true; 
+            }
         }});
     } else {
-        if(type === 'lease') { FILES.lease = true; document.getElementById('leaseStatus').innerText = "✅ Loaded"; }
-        if(type === 'renewal') { FILES.renewal = true; document.getElementById('renewalStatus').innerText = "✅ Loaded"; }
+        if(type === 'lease' || type === 'renewal') { 
+            const statusDiv = type==='lease' ? 'leaseStatus' : 'renewalStatus';
+            const dataDiv = type==='lease' ? 'leaseData' : 'renewalData';
+            FILES[type] = true; 
+            document.getElementById(statusDiv).innerText = "✅ Loaded"; 
+            
+            pdfjsLib.getDocument(URL.createObjectURL(input.files[0])).promise.then(pdf => {
+                pdf.getPage(1).then(page => page.getTextContent()).then(text => {
+                    const s = text.items.map(i=>i.str).join(" ");
+                    const matches = s.match(/(\$?\s?[0-9]{1,3}(?:,?[0-9]{3})*(?:\.[0-9]{2})?)/g);
+                    if(matches) {
+                        LEASE_RENTS_FOUND = matches.map(m => parseFloat(m.replace(/[$,\s]/g,''))).filter(n => n > 100 && n < 10000);
+                        LEASE_RENTS_FOUND = [...new Set(LEASE_RENTS_FOUND)];
+                        
+                        const displayDiv = document.getElementById(dataDiv);
+                        if(LEASE_RENTS_FOUND.length > 0) {
+                            displayDiv.innerHTML = `<strong>Found:</strong> ${LEASE_RENTS_FOUND.map(v => "$"+v.toFixed(2)).join(", ")}`;
+                            displayDiv.style.display = 'block';
+                        } else {
+                            displayDiv.innerHTML = `⚠️ No rent amounts found. Manual check required.`;
+                            displayDiv.style.display = 'block';
+                            displayDiv.style.background = '#ffeeba';
+                        }
+                    }
+                });
+            });
+        }
         if(type === 'mgmtPdf') { 
             FILES.mgmtPdf = true; document.getElementById('mgmtPdfStatus').innerText = "✅ Loaded"; 
             pdfjsLib.getDocument(URL.createObjectURL(input.files[0])).promise.then(pdf => {
                 pdf.getPage(1).then(page => page.getTextContent()).then(text => {
                     const s = text.items.map(i=>i.str).join(" ");
                     const fee = s.match(/([0-9]+)%/);
+                    const min = s.match(/minimum.*?\$([0-9]+)/i);
                     if(fee) document.getElementById('mgmtFeePct').value = fee[1];
+                    if(min) document.getElementById('mgmtMin').value = min[1];
                 });
             });
         }
     }
 }
 
-// --- LEDGER AUDIT ---
+function validateRentInput(input) {
+    const val = parseFloat(input.value);
+    if(LEASE_RENTS_FOUND.length > 0) {
+        if(!LEASE_RENTS_FOUND.some(f => Math.abs(f - val) < 1.0)) {
+            document.getElementById('rentConstMismatch').style.display = 'block';
+            IS_LEASE_MISSING = true;
+        } else {
+            document.getElementById('rentConstMismatch').style.display = 'none';
+            IS_LEASE_MISSING = false;
+        }
+    }
+}
+
 function runLedgerAudit() {
     if(!FILES.csv) return alert("Upload CSV");
+    
     const mode = document.querySelector('input[name="leaseCheck"]:checked').value;
-    const rJan = mode === 'single' ? parseFloat(document.getElementById('rentConst').value) : parseFloat(document.getElementById('rentOld').value);
-    const rDec = mode === 'single' ? rJan : parseFloat(document.getElementById('rentNew').value);
-    const splitMonth = mode === 'single' ? 13 : parseInt(document.getElementById('changeMonth').value);
-    const leaseStart = mode === 'single' ? new Date(document.getElementById('leaseStartInput').value) : null;
+    const rJan = parseFloat(document.getElementById('rentConst').value || document.getElementById('rentOld').value);
+    const rDec = parseFloat(document.getElementById('rentNew').value) || rJan;
+    const splitMonth = parseInt(document.getElementById('changeMonth').value);
+    const leaseStart = new Date(document.getElementById('leaseStartInput').value);
     
     if(isNaN(rJan)) return alert("Check Rent Amounts");
 
-    let logicSummary = "";
-    if(mode === 'single') {
-        logicSummary = `METHODOLOGY: Verified 12 months of constant rent ($${rJan.toFixed(2)}) against Lease Start Date: ${document.getElementById('leaseStartInput').value}`;
+    // GATEKEEPER
+    IS_LEASE_MISSING = true; 
+    if(LEASE_RENTS_FOUND.length > 0) {
+        const checkVal1 = rJan;
+        const checkVal2 = rDec;
+        const found1 = LEASE_RENTS_FOUND.some(f => Math.abs(f - checkVal1) < 1.0);
+        const found2 = LEASE_RENTS_FOUND.some(f => Math.abs(f - checkVal2) < 1.0);
+        if(mode === 'single' && found1) IS_LEASE_MISSING = false;
+        if(mode === 'multi' && (found1 || found2)) IS_LEASE_MISSING = false;
     } else {
-        logicSummary = `METHODOLOGY: Verified split rent schedule (Lease Renewal).\n- Jan to Month ${splitMonth-1}: $${rJan.toFixed(2)}\n- Month ${splitMonth} to Dec: $${rDec.toFixed(2)}`;
+        IS_LEASE_MISSING = true;
     }
 
-    let monthlyTotals = {};
+    let logicSummary = mode === 'single' ? 
+        `METHODOLOGY: Verified 12 months of constant rent ($${rJan.toFixed(2)}) against Lease Start Date: ${document.getElementById('leaseStartInput').value}` : 
+        `METHODOLOGY: Verified split rent schedule (Lease Renewal).\n- Jan to Month ${splitMonth-1}: $${rJan.toFixed(2)}\n- Month ${splitMonth} to Dec: $${rDec.toFixed(2)}`;
+
+    let monthlyTotals = {}, errors = [], totalError = 0;
     LEDGER_CSV.forEach(row => {
         let dStr = row['EntryDate'] || row['Date'];
         let desc = (row['JournalMemo'] || row['Description'] || "").toLowerCase();
@@ -443,11 +635,14 @@ function runLedgerAudit() {
         }
     });
 
-    let errors = [];
     Object.keys(monthlyTotals).sort().forEach(k => {
         let item = monthlyTotals[k];
-        let expected = (item.m >= splitMonth) ? rDec : rJan;
-        if(Math.abs(item.val - expected) > 1.0) errors.push(`Mismatch ${k}: Charged $${item.val.toFixed(2)} | Expected $${expected.toFixed(2)}`);
+        let expected = (mode === 'multi' && item.m >= splitMonth) ? rDec : rJan;
+        if(Math.abs(item.val - expected) > 1.0) {
+            let diff = Math.abs(item.val - expected);
+            errors.push(`Mismatch ${k}: Charged $${item.val.toFixed(2)} | Expected $${expected.toFixed(2)}`);
+            totalError += diff;
+        }
     });
 
     let isStagnant = false;
@@ -456,53 +651,88 @@ function runLedgerAudit() {
         if(leaseStart < oneYearAgo) isStagnant = true;
     }
 
-    renderResults(errors, isStagnant, "Ledger", logicSummary);
+    renderResults(errors, isStagnant, "Ledger", logicSummary, totalError, IS_LEASE_MISSING);
 }
 
-// --- MGMT AUDIT ---
 function runMgmtAudit() {
     if(!FILES.mgmtCsv || !FILES.mgmtPdf) return alert("Upload both PDF and CSV");
     const feePct = parseFloat(document.getElementById('mgmtFeePct').value) / 100;
-    const rent = parseFloat(document.getElementById('mgmtRent').value);
-    if(isNaN(rent)) return alert("Enter Rent Amount");
+    const minFee = parseFloat(document.getElementById('mgmtMin').value) || 0;
     
-    let errors = [];
-    let expectedFee = rent * feePct;
-    let logicSummary = `METHODOLOGY: Management Fee Verification.\n- Agreement Rate: ${(feePct*100).toFixed(1)}%\n- Verified against Collected Rent: $${rent.toFixed(2)}\n- Target Fee: $${expectedFee.toFixed(2)}`;
+    const mode = document.querySelector('input[name="mgmtRentCheck"]:checked').value;
+    const rJan = parseFloat(mode === 'no' ? document.getElementById('mgmtRentA').value : document.getElementById('mgmtRentOld').value);
+    const rDec = parseFloat(mode === 'no' ? rJan : document.getElementById('mgmtRentNew').value);
+    const splitMonth = parseInt(document.getElementById('mgmtChangeMonth').value);
+
+    if(isNaN(rJan)) return alert("Enter Rent Amount");
+    
+    let errors = [], totalError = 0;
+    let logicSummary = `METHODOLOGY: Management Fee Verification (Greater Of Rule).\n- Pct Rate: ${(feePct*100).toFixed(1)}%\n- Min Flat Fee: $${minFee.toFixed(2)}\n- Rent Schedule: ${mode==='no' ? 'Constant' : 'Split'}`;
 
     MGMT_CSV.forEach(row => {
-        let desc = (row['JournalMemo'] || row['Description'] || "").toLowerCase();
-        let amt = Math.abs(parseFloat((row['Amount'] || "0").replace(/[$,]/g,'')));
-        let dStr = row['EntryDate'] || row['Date'];
+        if(row.length < 5) return;
+        let desc = (row[4] || "").toString().toLowerCase();
+        let amt = Math.abs(parseFloat((row[13] || "0").replace(/[$,]/g,'')));
+        let dStr = row[0];
+        let ref = row[2] || "";
 
         if(desc.includes('management fee')) {
-            if(Math.abs(amt - expectedFee) > 0.05) {
-                errors.push(`${dStr}: Fee $${amt.toFixed(2)} mismatch. Expected $${expectedFee.toFixed(2)}`);
+            let d = new Date(dStr);
+            if(!isNaN(d)) {
+                let m = d.getMonth() + 1;
+                let currentRent = (mode === 'yes' && m >= splitMonth) ? rDec : rJan;
+                let pctFee = currentRent * feePct;
+                let expectedFee = Math.max(pctFee, minFee);
+
+                if(Math.abs(amt - expectedFee) > 0.05) {
+                    let diff = Math.abs(amt - expectedFee);
+                    errors.push(`${dStr} (${ref}): Fee $${amt.toFixed(2)} mismatch. Expected $${expectedFee.toFixed(2)} (Rent: $${currentRent})`);
+                    totalError += diff;
+                }
             }
         }
     });
 
-    renderResults(errors, false, "Management Fee", logicSummary);
+    renderResults(errors, false, "Management Fee", logicSummary, totalError, false);
 }
 
-// --- RENDER ---
-function renderResults(errors, isStagnant, type, logicSummary) {
+function renderResults(errors, isStagnant, type, logicSummary, totalError, isLeaseMissing) {
     const tenant = type === 'Ledger' ? document.getElementById('scanTenant').value : "N/A";
     const prop = type === 'Ledger' ? document.getElementById('propAddress').value : document.getElementById('mgmtProp').value;
     const task = document.getElementById('mainTaskNumber').value || "N/A";
-    const status = errors.length === 0 ? "PASS" : "FAIL";
+    let status = errors.length === 0 ? "PASS" : "FAIL";
+    const penalty = status === "FAIL" ? (totalError * 0.10).toFixed(2) : "0.00";
 
-    const passMsg = `<div style="padding:15px; background:#d4edda; color:#155724; border:1px solid #c3e6cb; border-radius:5px;"><h3>✅ Audit Passed: Excellent Work</h3><p>The ledger matches the lease terms perfectly. Thank you for maintaining accurate financial records.</p></div>`;
-    const failMsg = `<div style="padding:15px; background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; border-radius:5px;"><h3>❌ Audit Failed</h3><ul>${errors.map(e=>`<li>${e}</li>`).join('')}</ul></div>`;
+    const missingLeaseBox = document.getElementById('missingLeaseWorkflow');
     
-    document.getElementById('finResultBox').innerHTML = status === "PASS" ? passMsg : failMsg;
+    if(isLeaseMissing && status === "PASS") {
+        status = "PENDING PROOF";
+        missingLeaseBox.style.display = 'block';
+        document.getElementById('btnSave').disabled = true;
+        
+        let scannedList = LEASE_RENTS_FOUND.length > 0 ? LEASE_RENTS_FOUND.map(v => "$"+v.toFixed(2)).join(", ") : "None (PDF Unreadable)";
+        
+        document.getElementById('financeMissingLeaseTemplate').value = `ATTN: Financial Coordinator\nQC ALERT: Lease Document Missing or Mismatch\nProperty: ${prop}\nTenant: ${tenant}\n\nThe ledger reflects the correct charge, but the specific rent amount is not found in the uploaded Lease PDF.\n\nScanned Amounts in PDF: ${scannedList}\nInput Amount: $${document.getElementById('rentConst').value || document.getElementById('rentOld').value}\n\nACTION REQUIRED:\n1. Locate the signed renewal/addendum used for onboarding and attach it to this task.\n\nIF NOT FOUND:\n2. Reassign this task to the Operations Manager immediately with the note below.\n\n----------------------------\nATTN: Operations Manager\nESCALATION: Missing Lease Document\nProperty: ${prop}\n\nFinance could not locate the signed renewal. We are charging a rate without a matching document.\n\nACTION REQUIRED:\n1. Issue Lease Addendum to tenant immediately to legalize current rate.\n2. Submit Rental Increase if applicable.\n3. Upload signed documents to Buildium.`;
+        
+    } else {
+        missingLeaseBox.style.display = 'none';
+    }
+
+    const passMsg = `<div style="padding:15px; background:#d4edda; color:#155724; border:1px solid #c3e6cb; border-radius:5px;"><h3>✅ Audit Passed: Excellent Work</h3><p>The ledger matches the lease terms perfectly.</p></div>`;
+    const failMsg = `<div style="padding:15px; background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; border-radius:5px;"><h3>❌ Audit Failed</h3><p><strong>Total Fin. Error:</strong> $${totalError.toFixed(2)}</p><p><strong>Penalty (10%):</strong> $${penalty}</p><ul>${errors.map(e=>`<li>${e}</li>`).join('')}</ul></div>`;
+    const pendingMsg = `<div style="padding:15px; background:#e3f2fd; color:#0d47a1; border:1px solid #bbdefb; border-radius:5px;"><h3>⚠️ Caution: Pending Proof</h3><p>Ledger matches input, but Lease Document is missing/different. Escalation required.</p></div>`;
+
+    document.getElementById('finResultBox').innerHTML = status === "PASS" ? passMsg : (status === "PENDING PROOF" ? pendingMsg : failMsg);
 
     let fullReport = `QC AUDIT REPORT [Ref: ${QC_REF}]\n-----------------------------\nDate: ${new Date().toLocaleDateString()}\nType: ${type}\nProperty: ${prop}\nTenant: ${tenant}\nBuildium Task: ${task}\n\n`;
-    fullReport += `${logicSummary}\n\n`;
-    fullReport += `STATUS: ${status} ${status==='PASS'?'✅':'❌'}\n`;
+    fullReport += `${logicSummary}\n\n`; 
+    fullReport += `STATUS: ${status}\n`;
+    if(status === 'FAIL') fullReport += `PENALTY ASSESSED: $${penalty}\n`;
     
     if(status === "PASS") {
         fullReport += `Findings: ✅ Audit Passed: Excellent Work\nThe ledger matches the lease terms perfectly. Thank you for maintaining accurate financial records for this tenant.\n`;
+    } else if (status === "PENDING PROOF") {
+        fullReport += `Findings: ⚠️ Caution - Ledger matches input ($${document.getElementById('rentConst').value}), but this amount was not found in the Lease PDF. Escalation to find proof is required.\n`;
     } else {
         fullReport += `Findings:\n${errors.join('\n')}\n`;
         fullReport += `\nNEXT STEPS: Review Owner Statement, Correct Ledger, and Reply to Task #${task}.\n`;
@@ -511,25 +741,27 @@ function renderResults(errors, isStagnant, type, logicSummary) {
     const opsDiv = document.getElementById('opsWorkflow');
     if(isStagnant) {
         opsDiv.style.display = 'block';
-        document.getElementById('btnSave').disabled = true;
+        if(status !== "PENDING PROOF") document.getElementById('btnSave').disabled = true; 
         let note = `ATTN: Operations Manager\nQC ALERT: RENT STAGNATION\nProperty: ${prop}\nTenant: ${tenant}\n\nObservation: Rent unchanged > 12 months.\nAction: Please advise on Rent Increase Strategy.\n\nOPTIONS:\n1. Owner elected to keep rent the same\n2. Managed < 12 months (Increase Scheduled)\n3. Missed requirement / MTM (Will submit increase)\n4. Other\n\n*Please respond to this request within 1 business day so the QC Auditor can clear the Rent Stagnation Flag.*`;
         document.getElementById('opsCommentTemplate').value = note;
-        fullReport += `\nOPERATIONAL FLAG: Rent Stagnation. Notification sent to Ops Manager.\n`;
+        fullReport += `\nOPS ALERT: Rent Stagnation. Notification sent to Ops Manager.\n`;
     } else {
         opsDiv.style.display = 'none';
-        document.getElementById('btnSave').disabled = false;
+        if(status !== "PENDING PROOF") document.getElementById('btnSave').disabled = false;
     }
 
     document.getElementById('fullReportOutput').value = fullReport;
     document.getElementById('resultsCard').style.display = 'block';
 
-    CURRENT_AUDIT = { qcRef: QC_REF, date: new Date().toLocaleDateString(), type, tenant, prop, task, status, errors, isStagnant, opsResponse: "Pending", opsRef: "N/A", logicSummary };
+    CURRENT_AUDIT = { qcRef: QC_REF, date: new Date().toLocaleDateString(), type, tenant, prop, task, status, errors, isStagnant, opsResponse: "Pending", opsRef: "N/A", logicSummary, penaltyAmt: parseFloat(penalty) };
 }
 
-// --- UTILS ---
 function checkOpsProof() { document.getElementById('btnSave').disabled = (document.getElementById('opsTaskProof').value.length < 3); }
+function checkProofTask() { document.getElementById('btnSave').disabled = (document.getElementById('proofTaskNum').value.length < 3); }
+function copyMissingLeaseNote() { document.getElementById('financeMissingLeaseTemplate').select(); document.execCommand('copy'); }
 function copyOpsComment() { document.getElementById('opsCommentTemplate').select(); document.execCommand('copy'); }
 function copyFullReport() { document.getElementById('fullReportOutput').select(); document.execCommand('copy'); }
+function copyOpsEscalation() { document.getElementById('opsEscalationTemplate').select(); document.execCommand('copy'); }
 
 function saveAudit() {
     if(CURRENT_AUDIT.isStagnant) CURRENT_AUDIT.opsRef = document.getElementById('opsTaskProof').value;
@@ -547,12 +779,12 @@ function renderHistoryRow(id, isNew) {
     const data = AUDIT_LOG[id];
     let opsBadge = data.isStagnant ? (data.opsResponse === "Pending" ? '<span class="badge bg-warn">Pending</span>' : '<span class="badge bg-pass">Cleared</span>') : '<span class="badge" style="background:#eee;">N/A</span>';
     let updateBtn = (data.isStagnant && data.opsResponse === "Pending") ? `<button class="btn btn-warn" onclick="openUpdateModal('${id}')" style="padding:2px 6px;">Update</button>` : '';
+    let penaltyTxt = data.penaltyAmt > 0 ? `<span style="color:red; font-weight:bold;">$${data.penaltyAmt}</span>` : "$0";
+    let statusIcon = data.status === 'PASS' ? '✅' : (data.status === 'PENDING PROOF' ? '⚠️' : '❌');
+    let reRunBtn = (data.status === 'FAIL' || data.status === 'PENDING PROOF') ? `<button class="btn btn-primary" onclick="reRunAudit('${id}')" style="padding:2px 6px; margin-left:5px;"><i class="fas fa-sync"></i></button>` : '';
 
     let row = document.getElementById(`row-${id}`);
-    const html = `<td>${data.date}</td><td>${data.qcRef}</td><td>${data.type}</td><td>${data.prop}</td>
-    <td><span class="badge ${data.status==='PASS'?'bg-pass':'bg-fail'}">${data.status}</span></td>
-    <td>${opsBadge}</td>
-    <td>${updateBtn} <button class="btn btn-outline" onclick="genPDF('${id}')" style="padding:2px 6px;"><i class="fas fa-file-pdf"></i></button></td>`;
+    const html = `<td>${data.date}</td><td>${data.qcRef}</td><td>${data.type}</td><td>${statusIcon} ${data.status}</td><td>${penaltyTxt}</td><td>${opsBadge}</td><td>${updateBtn} <button class="btn btn-outline" onclick="genPDF('${id}')" style="padding:2px 6px;"><i class="fas fa-file-pdf"></i></button>${reRunBtn}</td>`;
 
     if(row) { row.innerHTML = html; } 
     else {
@@ -563,7 +795,6 @@ function renderHistoryRow(id, isNew) {
     }
 }
 
-// Modal & PDF
 function openUpdateModal(id) { EDITING_ID = id; document.getElementById('updateModal').style.display = 'flex'; }
 function closeModal() { document.getElementById('updateModal').style.display = 'none'; }
 function confirmUpdate() {
@@ -583,13 +814,20 @@ function genPDF(id) {
     document.getElementById('pdf-task').innerText = data.task;
     document.getElementById('pdf-tenant').innerText = data.tenant;
     document.getElementById('pdf-property').innerText = data.prop;
-    document.getElementById('pdf-header-status').innerText = data.status === 'PASS' ? "✅ PASS" : "❌ FAIL";
+    document.getElementById('pdf-header-status').innerText = data.status;
     document.getElementById('pdf-methodology').innerText = data.logicSummary || "Methodology verification completed.";
     
     const img = document.getElementById('pdfLogo');
     if(LOGO_DATA) { img.src = LOGO_DATA; img.style.display = 'block'; }
     
-    const content = data.errors.length ? data.errors.join('<br>') : "✅ Audit Passed: Excellent Work<br>The ledger matches the lease terms perfectly.";
+    let content = "";
+    if(data.status === 'PASS') {
+        content = "✅ Audit Passed: Excellent Work<br>The ledger matches the lease terms perfectly.";
+    } else if(data.status === 'PENDING PROOF') {
+        content = "⚠️ Caution: Pending Proof of Lease<br>Ledger matches input, but the input amount was not found in the Lease PDF. Escalation initiated.";
+    } else {
+        content = `❌ Audit Failed. Financial Errors Found.<br>Total Error: $${(data.penaltyAmt/0.10).toFixed(2)}<br><strong>Penalty Assessed (10%): $${data.penaltyAmt}</strong><br><br>Errors:<br>${data.errors.join('<br>')}`;
+    }
     document.getElementById('pdf-content').innerHTML = content;
     
     const ops = document.getElementById('pdf-ops-section');
@@ -608,6 +846,7 @@ function genPDF(id) {
 function showTab(id) {
     document.getElementById('auditTab').style.display = id === 'auditTab' ? 'block' : 'none';
     document.getElementById('historyTab').style.display = id === 'historyTab' ? 'block' : 'none';
+    document.getElementById('scoreTab').style.display = id === 'scoreTab' ? 'block' : 'none';
 }
 </script>
 </body>
