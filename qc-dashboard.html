@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PropertyWize QC Hub V28.0 (Re-Run & TAT)</title>
+<title>PropertyWize QC Hub V32.0 (Smart Scan)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -70,6 +70,12 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
 /* Modal */
 .modal-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; display:none; justify-content:center; align-items:center; }
 .modal { background:white; padding:30px; border-radius:8px; width:500px; box-shadow:0 4px 12px rgba(0,0,0,0.2); }
+
+/* Scorecard */
+.score-grid { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:20px; margin-bottom:20px; }
+.score-box { text-align:center; padding:20px; background:#f8f9fa; border-radius:8px; border:1px solid #eee; }
+.score-val { font-size:2rem; font-weight:bold; color:var(--primary); margin:0; }
+.score-label { color:#666; font-size:0.9rem; text-transform:uppercase; }
 
 /* PDF Styles */
 #pdf-template { display: none; width: 700px; padding: 30px; font-family: 'Helvetica', sans-serif; background: white; color: #333; box-sizing: border-box; }
@@ -151,7 +157,7 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
 
 <div class="navbar">
     <div class="brand">
-        <i class="fas fa-shield-alt"></i> PropertyWize QC Hub V28.0
+        <i class="fas fa-shield-alt"></i> PropertyWize QC Hub V32.0
         <select id="auditTypeSelect" class="mode-select" onchange="toggleAuditMode()">
             <option value="ledger">Tenant Ledger Audit</option>
             <option value="mgmt">Management Fee Audit</option>
@@ -196,12 +202,12 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
                 </div>
                 <div class="score-box">
                     <h1 class="score-val" id="scorePenalty" style="color:var(--danger);">$0</h1>
-                    <div class="score-label">Total Penalties (10%)</div>
+                    <div class="score-label">Total Penalties ($5.00/ea)</div>
                 </div>
             </div>
             <div class="card">
                 <h3>Penalty Log</h3>
-                <p>Penalties are assessed at 10% of total financial error per failed audit.</p>
+                <p>Penalties are assessed at $5.00 per individual financial error found.</p>
             </div>
         </div>
 
@@ -397,6 +403,7 @@ let LEASE_RENTS_FOUND = [];
 let IS_LEASE_MISSING = false;
 let EDITING_ID = null;
 let LOGO_DATA = null;
+let LATE_FEE_REPORT_DATA = [];
 
 function initApp() {
     const savedLogo = localStorage.getItem('pw_qc_logo');
@@ -411,50 +418,35 @@ function initApp() {
         AUDIT_LOG = JSON.parse(savedHistory);
         Object.keys(AUDIT_LOG).reverse().forEach(key => renderHistoryRow(key, false));
         updateScorecard();
-        checkTAT(); // Run TAT Check
+        checkTAT();
     }
     document.getElementById('qcRefDisplay').innerText = QC_REF;
     document.getElementById('qcRefDisplayMgmt').innerText = QC_REF;
 }
 
-// --- TAT CHECK ---
 function checkTAT() {
     const now = new Date();
     const overdue = [];
     Object.values(AUDIT_LOG).forEach(a => {
         if(a.status === 'PASS') return;
         const auditDate = new Date(a.date);
-        // Simple day diff
-        const diffTime = Math.abs(now - auditDate);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-        
-        if(diffDays > 1) { // Greater than 1 day
-            overdue.push(`${a.qcRef} - ${a.tenant || a.prop}`);
-        }
+        const diffDays = Math.ceil(Math.abs(now - auditDate) / (1000 * 60 * 60 * 24)); 
+        if(diffDays > 1) overdue.push(`${a.qcRef} - ${a.tenant || a.prop}`);
     });
-
     if(overdue.length > 0) {
         document.getElementById('tatAlertBox').style.display = 'block';
         document.getElementById('tatList').innerHTML = overdue.map(i => `<li>${i}</li>`).join('');
     }
 }
+function copyTatEmail() { document.getElementById('tatEmailTemplate').select(); document.execCommand('copy'); }
 
-function copyTatEmail() {
-    document.getElementById('tatEmailTemplate').select();
-    document.execCommand('copy');
-}
-
-// --- RE-RUN LOGIC ---
 function reRunAudit(id) {
     const old = AUDIT_LOG[id];
     if(!old) return;
-
-    // Reload Data
     document.getElementById('scanTenant').value = old.tenant || "";
     document.getElementById('propAddress').value = old.prop || "";
     document.getElementById('mainTaskNumber').value = old.task || "";
     
-    // Switch to correct tab
     if(old.type === 'Ledger') {
         document.getElementById('auditTypeSelect').value = 'ledger';
         toggleAuditMode();
@@ -462,12 +454,9 @@ function reRunAudit(id) {
         document.getElementById('auditTypeSelect').value = 'mgmt';
         toggleAuditMode();
     }
-
-    // NEW REF
     QC_REF = "QC-" + Math.floor(100000 + Math.random() * 900000);
     document.getElementById('qcRefDisplay').innerText = QC_REF;
     document.getElementById('qcRefDisplayMgmt').innerText = QC_REF;
-
     showTab('auditTab');
     alert(`Re-Run Initiated.\n\nOld Data Loaded.\nNew QC Ref: ${QC_REF}\n\nPlease upload CORRECTED documents and Run Audit again.`);
 }
@@ -478,7 +467,6 @@ function updateScorecard() {
     const passed = audits.filter(a => a.status === 'PASS').length;
     const rate = total === 0 ? 0 : Math.round((passed / total) * 100);
     const penalties = audits.reduce((sum, a) => sum + (a.penaltyAmt || 0), 0);
-    
     document.getElementById('scoreTotal').innerText = total;
     document.getElementById('scorePass').innerText = rate + "%";
     document.getElementById('scorePenalty').innerText = "$" + penalties.toFixed(2);
@@ -489,10 +477,7 @@ function saveSystemData() {
     localStorage.setItem('pw_qc_history', JSON.stringify(AUDIT_LOG));
     updateScorecard();
 }
-
-function clearSystemData() {
-    if(confirm("Delete all data?")) { localStorage.clear(); location.reload(); }
-}
+function clearSystemData() { if(confirm("Delete all data?")) { localStorage.clear(); location.reload(); } }
 
 function toggleAuditMode() {
     const mode = document.getElementById('auditTypeSelect').value;
@@ -508,7 +493,7 @@ function toggleMgmtRent(val) {
     document.getElementById('mgmtRentSingle').style.display = val === 'no' ? 'block' : 'none';
     document.getElementById('mgmtRentMulti').style.display = val === 'yes' ? 'grid' : 'none';
 }
-
+function triggerLogoUpload() { document.getElementById('logoInput').click(); }
 function loadLogo(input) {
     if(input.files && input.files[0]) {
         var reader = new FileReader();
@@ -525,16 +510,14 @@ function loadLogo(input) {
 
 function processFile(input, type) {
     if(input.files.length === 0) return;
-    if(type === 'csv' || type === 'mgmtCsv') {
+    if(type === 'csv') {
+        // HEADER: FALSE ensures we get an array of arrays, allowing Index 14/15/17 access
+        Papa.parse(input.files[0], { header: false, skipEmptyLines: true, complete: r => {
+            LEDGER_CSV = r.data; document.getElementById('stmtStatus').innerText = "✅ Loaded"; FILES.csv = true;
+        }});
+    } else if(type === 'mgmtCsv') {
         Papa.parse(input.files[0], { header: false, skipEmptyLines: true, complete: res => {
-            if(type === 'csv') { 
-                Papa.parse(input.files[0], { header: true, complete: r => {
-                    LEDGER_CSV = r.data; document.getElementById('stmtStatus').innerText = "✅ Loaded"; FILES.csv = true;
-                }});
-            }
-            else { 
-                MGMT_CSV = res.data; document.getElementById('mgmtCsvStatus').innerText = "✅ Loaded"; FILES.mgmtCsv = true; 
-            }
+            MGMT_CSV = res.data; document.getElementById('mgmtCsvStatus').innerText = "✅ Loaded"; FILES.mgmtCsv = true; 
         }});
     } else {
         if(type === 'lease' || type === 'renewal') { 
@@ -550,7 +533,6 @@ function processFile(input, type) {
                     if(matches) {
                         LEASE_RENTS_FOUND = matches.map(m => parseFloat(m.replace(/[$,\s]/g,''))).filter(n => n > 100 && n < 10000);
                         LEASE_RENTS_FOUND = [...new Set(LEASE_RENTS_FOUND)];
-                        
                         const displayDiv = document.getElementById(dataDiv);
                         if(LEASE_RENTS_FOUND.length > 0) {
                             displayDiv.innerHTML = `<strong>Found:</strong> ${LEASE_RENTS_FOUND.map(v => "$"+v.toFixed(2)).join(", ")}`;
@@ -582,7 +564,7 @@ function processFile(input, type) {
 function validateRentInput(input) {
     const val = parseFloat(input.value);
     if(LEASE_RENTS_FOUND.length > 0) {
-        if(!LEASE_RENTS_FOUND.some(f => Math.abs(f - val) < 1.0)) {
+        if(!LEASE_RENTS_FOUND.some(f => Math.abs(f - val) < 1.0)) { 
             document.getElementById('rentConstMismatch').style.display = 'block';
             IS_LEASE_MISSING = true;
         } else {
@@ -592,6 +574,9 @@ function validateRentInput(input) {
     }
 }
 
+// =========================================================
+// UPDATED LEDGER AUDIT LOGIC (V32.0 - SMART SCAN)
+// =========================================================
 function runLedgerAudit() {
     if(!FILES.csv) return alert("Upload CSV");
     
@@ -612,25 +597,81 @@ function runLedgerAudit() {
         const found2 = LEASE_RENTS_FOUND.some(f => Math.abs(f - checkVal2) < 1.0);
         if(mode === 'single' && found1) IS_LEASE_MISSING = false;
         if(mode === 'multi' && (found1 || found2)) IS_LEASE_MISSING = false;
-    } else {
-        IS_LEASE_MISSING = true;
-    }
+    } else { IS_LEASE_MISSING = true; }
 
     let logicSummary = mode === 'single' ? 
         `METHODOLOGY: Verified 12 months of constant rent ($${rJan.toFixed(2)}) against Lease Start Date: ${document.getElementById('leaseStartInput').value}` : 
         `METHODOLOGY: Verified split rent schedule (Lease Renewal).\n- Jan to Month ${splitMonth-1}: $${rJan.toFixed(2)}\n- Month ${splitMonth} to Dec: $${rDec.toFixed(2)}`;
 
-    let monthlyTotals = {}, errors = [], totalError = 0;
+    let monthlyTotals = {}, errors = [], totalError = 0, lateFeeErrors = 0;
+    LATE_FEE_REPORT_DATA = [];
+
+    // --- MAIN ITERATION ---
+    let totalRowsScanned = 0;
+
     LEDGER_CSV.forEach(row => {
-        let dStr = row['EntryDate'] || row['Date'];
-        let desc = (row['JournalMemo'] || row['Description'] || "").toLowerCase();
-        let amt = parseFloat((row['Amount'] || "0").replace(/[$,]/g,''));
+        totalRowsScanned++;
+
+        // 1. SMART COLUMN MAPPING
+        // Default to User Instructions: O=14 (Date), P=15 (Memo), R=17 (Amount)
+        let memoIdx = 15;
+        let dateIdx = 14;
+        let amtIdx = 17;
+
+        let rawDesc = (row[memoIdx] || "").toLowerCase();
+        
+        // 2. FALLBACK: IF NOT IN COL P, SCAN ALL COLS
+        if(!rawDesc.includes('late fee')) {
+            // Smart Scan: Look for "Late fee" in ANY column
+            let foundIdx = row.findIndex(cell => (cell || "").toString().toLowerCase().includes("late fee"));
+            if(foundIdx !== -1) {
+                // Adjust mapping relative to where we found "Late Fee"
+                memoIdx = foundIdx;
+                amtIdx = foundIdx + 2;  // P -> R is +2
+                dateIdx = foundIdx - 1; // P -> O is -1
+            }
+        }
+
+        // 3. EXTRACT VALUES
+        let dStr = row[dateIdx] || row[0]; // Fallback to col 0 if date empty
+        let desc = (row[memoIdx] || "").toLowerCase();
+        let amt = parseFloat((row[amtIdx] || "0").replace(/[$,]/g,''));
+
+        // RENT CHECK (Uses standard mapping unless specific row differs)
         if(dStr && amt > 0 && (desc.includes('rent') || desc.includes('sx8') || desc.includes('hap'))) {
             let d = new Date(dStr);
             if(!isNaN(d)) {
                 let k = d.getFullYear() + "-" + (d.getMonth()+1);
                 if(!monthlyTotals[k]) monthlyTotals[k] = { val:0, m: d.getMonth()+1 };
                 monthlyTotals[k].val += amt;
+            }
+        }
+
+        // LATE FEE CHECK (5% LOGIC)
+        if(desc.includes('late fee')) {
+            let d = new Date(dStr);
+            if(!isNaN(d)) {
+                let m = d.getMonth() + 1;
+                let currentRent = (mode === 'multi' && m >= splitMonth) ? rDec : rJan;
+                let maxLegalFee = currentRent * 0.05;
+                let lfStatus = "PASS";
+                let lfNote = "Verified Compliant.";
+                
+                if(amt > (maxLegalFee + 0.05)) { // 5 cent buffer
+                    lfStatus = "FAIL";
+                    lfNote = "Error: Late Fee exceeds 5% legal limit. Please correct ledger.";
+                    errors.push(`Late Fee Excess (${dStr}): Charged $${amt.toFixed(2)} (Max 5% = $${maxLegalFee.toFixed(2)})`);
+                    lateFeeErrors++;
+                }
+
+                LATE_FEE_REPORT_DATA.push({
+                    month: d.toLocaleString('default', { month: 'short' }) + " " + d.getFullYear(),
+                    baseRent: currentRent,
+                    limit: maxLegalFee,
+                    charged: amt,
+                    status: lfStatus,
+                    note: lfNote
+                });
             }
         }
     });
@@ -651,21 +692,19 @@ function runLedgerAudit() {
         if(leaseStart < oneYearAgo) isStagnant = true;
     }
 
-    renderResults(errors, isStagnant, "Ledger", logicSummary, totalError, IS_LEASE_MISSING);
+    renderResults(errors, isStagnant, "Ledger", logicSummary, totalError, IS_LEASE_MISSING, lateFeeErrors, totalRowsScanned);
 }
 
 function runMgmtAudit() {
     if(!FILES.mgmtCsv || !FILES.mgmtPdf) return alert("Upload both PDF and CSV");
     const feePct = parseFloat(document.getElementById('mgmtFeePct').value) / 100;
     const minFee = parseFloat(document.getElementById('mgmtMin').value) || 0;
-    
     const mode = document.querySelector('input[name="mgmtRentCheck"]:checked').value;
     const rJan = parseFloat(mode === 'no' ? document.getElementById('mgmtRentA').value : document.getElementById('mgmtRentOld').value);
     const rDec = parseFloat(mode === 'no' ? rJan : document.getElementById('mgmtRentNew').value);
     const splitMonth = parseInt(document.getElementById('mgmtChangeMonth').value);
 
     if(isNaN(rJan)) return alert("Enter Rent Amount");
-    
     let errors = [], totalError = 0;
     let logicSummary = `METHODOLOGY: Management Fee Verification (Greater Of Rule).\n- Pct Rate: ${(feePct*100).toFixed(1)}%\n- Min Flat Fee: $${minFee.toFixed(2)}\n- Rent Schedule: ${mode==='no' ? 'Constant' : 'Split'}`;
 
@@ -692,34 +731,28 @@ function runMgmtAudit() {
             }
         }
     });
-
-    renderResults(errors, false, "Management Fee", logicSummary, totalError, false);
+    renderResults(errors, false, "Management Fee", logicSummary, totalError, false, 0, 0);
 }
 
-function renderResults(errors, isStagnant, type, logicSummary, totalError, isLeaseMissing) {
+function renderResults(errors, isStagnant, type, logicSummary, totalError, isLeaseMissing, lateFeeErrors, totalRows) {
     const tenant = type === 'Ledger' ? document.getElementById('scanTenant').value : "N/A";
     const prop = type === 'Ledger' ? document.getElementById('propAddress').value : document.getElementById('mgmtProp').value;
     const task = document.getElementById('mainTaskNumber').value || "N/A";
     let status = errors.length === 0 ? "PASS" : "FAIL";
-    const penalty = status === "FAIL" ? (totalError * 0.10).toFixed(2) : "0.00";
+    const penaltyCount = errors.length; 
+    const penalty = status === "FAIL" ? (penaltyCount * 5.00).toFixed(2) : "0.00";
 
     const missingLeaseBox = document.getElementById('missingLeaseWorkflow');
-    
     if(isLeaseMissing && status === "PASS") {
         status = "PENDING PROOF";
         missingLeaseBox.style.display = 'block';
         document.getElementById('btnSave').disabled = true;
-        
         let scannedList = LEASE_RENTS_FOUND.length > 0 ? LEASE_RENTS_FOUND.map(v => "$"+v.toFixed(2)).join(", ") : "None (PDF Unreadable)";
-        
-        document.getElementById('financeMissingLeaseTemplate').value = `ATTN: Financial Coordinator\nQC ALERT: Lease Document Missing or Mismatch\nProperty: ${prop}\nTenant: ${tenant}\n\nThe ledger reflects the correct charge, but the specific rent amount is not found in the uploaded Lease PDF.\n\nScanned Amounts in PDF: ${scannedList}\nInput Amount: $${document.getElementById('rentConst').value || document.getElementById('rentOld').value}\n\nACTION REQUIRED:\n1. Locate the signed renewal/addendum used for onboarding and attach it to this task.\n\nIF NOT FOUND:\n2. Reassign this task to the Operations Manager immediately with the note below.\n\n----------------------------\nATTN: Operations Manager\nESCALATION: Missing Lease Document\nProperty: ${prop}\n\nFinance could not locate the signed renewal. We are charging a rate without a matching document.\n\nACTION REQUIRED:\n1. Issue Lease Addendum to tenant immediately to legalize current rate.\n2. Submit Rental Increase if applicable.\n3. Upload signed documents to Buildium.`;
-        
-    } else {
-        missingLeaseBox.style.display = 'none';
-    }
+        document.getElementById('financeMissingLeaseTemplate').value = `ATTN: Financial Coordinator\nQC ALERT: Lease Document Missing or Mismatch\nProperty: ${prop}\nTenant: ${tenant}\n\nThe Ledger matches your input, but the input amount is not found in the uploaded Lease PDF.\n\nScanned Amounts in PDF: ${scannedList}\nInput Amount: $${document.getElementById('rentConst').value || document.getElementById('rentOld').value}\n\nACTION REQUIRED:\n1. Locate the signed renewal/addendum used for onboarding and attach it to this task.\n\nIF NOT FOUND:\n2. Reassign this task to the Operations Manager immediately with the note below.\n\n----------------------------\nATTN: Operations Manager\nESCALATION: Missing Lease Document\nProperty: ${prop}\n\nFinance could not locate the signed renewal. We are charging a rate without a matching document.\n\nACTION REQUIRED:\n1. Issue Lease Addendum to tenant immediately to legalize current rate.\n2. Submit Rental Increase if applicable.\n3. Upload signed documents to Buildium.`; 
+    } else { missingLeaseBox.style.display = 'none'; }
 
     const passMsg = `<div style="padding:15px; background:#d4edda; color:#155724; border:1px solid #c3e6cb; border-radius:5px;"><h3>✅ Audit Passed: Excellent Work</h3><p>The ledger matches the lease terms perfectly.</p></div>`;
-    const failMsg = `<div style="padding:15px; background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; border-radius:5px;"><h3>❌ Audit Failed</h3><p><strong>Total Fin. Error:</strong> $${totalError.toFixed(2)}</p><p><strong>Penalty (10%):</strong> $${penalty}</p><ul>${errors.map(e=>`<li>${e}</li>`).join('')}</ul></div>`;
+    const failMsg = `<div style="padding:15px; background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; border-radius:5px;"><h3>❌ Audit Failed</h3><p><strong>Errors Found:</strong> ${penaltyCount}</p><p><strong>Penalty ($5/error):</strong> $${penalty}</p><ul>${errors.map(e=>`<li>${e}</li>`).join('')}</ul></div>`;
     const pendingMsg = `<div style="padding:15px; background:#e3f2fd; color:#0d47a1; border:1px solid #bbdefb; border-radius:5px;"><h3>⚠️ Caution: Pending Proof</h3><p>Ledger matches input, but Lease Document is missing/different. Escalation required.</p></div>`;
 
     document.getElementById('finResultBox').innerHTML = status === "PASS" ? passMsg : (status === "PENDING PROOF" ? pendingMsg : failMsg);
@@ -727,15 +760,36 @@ function renderResults(errors, isStagnant, type, logicSummary, totalError, isLea
     let fullReport = `QC AUDIT REPORT [Ref: ${QC_REF}]\n-----------------------------\nDate: ${new Date().toLocaleDateString()}\nType: ${type}\nProperty: ${prop}\nTenant: ${tenant}\nBuildium Task: ${task}\n\n`;
     fullReport += `${logicSummary}\n\n`; 
     fullReport += `STATUS: ${status}\n`;
-    if(status === 'FAIL') fullReport += `PENALTY ASSESSED: $${penalty}\n`;
+    if(status === 'FAIL') fullReport += `PENALTY ASSESSED: $${penalty} (${penaltyCount} Errors @ $5.00)\n`;
     
     if(status === "PASS") {
-        fullReport += `Findings: ✅ Audit Passed: Excellent Work\nThe ledger matches the lease terms perfectly. Thank you for maintaining accurate financial records for this tenant.\n`;
+        fullReport += `Findings: ✅ Audit Passed: Excellent Work\nThe ledger matches the lease terms perfectly.\n`;
     } else if (status === "PENDING PROOF") {
-        fullReport += `Findings: ⚠️ Caution - Ledger matches input ($${document.getElementById('rentConst').value}), but this amount was not found in the Lease PDF. Escalation to find proof is required.\n`;
+        fullReport += `Findings: ⚠️ Caution - Ledger matches input, but amount not found in Lease PDF.\n`;
     } else {
         fullReport += `Findings:\n${errors.join('\n')}\n`;
-        fullReport += `\nNEXT STEPS: Review Owner Statement, Correct Ledger, and Reply to Task #${task}.\n`;
+    }
+
+    if(type === 'Ledger') {
+        fullReport += `\n======================================================\nSECTION 4: LATE FEE VALIDATION (5% LIMIT)\n======================================================\n`;
+        if(lateFeeErrors > 0) {
+            fullReport += `STATUS: ❌ ACTION REQUIRED\nSummary: Ledger contains late fees exceeding 5% limit.\n\nCorrection Protocol:\n1. CORRECT: Adjust Guest Ledger for months flagged below.\n2. RESPOND: Update Task status to 'Corrections Made'.\n3. NEXT STEP: This will signal QC to RERUN the audit tool.\n\n`;
+        } else {
+            fullReport += `STATUS: ✅ VERIFICATION SUCCESSFUL — TASK CLOSED\nSummary: All late fee errors corrected. No further action required.\n\n`;
+        }
+        fullReport += `DETAILED VERIFICATION LOG:\nMonth       | Base Rent | 5% Limit | Fee Charged | Status  | Note\n-----------------------------------------------------------------------------------\n`;
+        if(LATE_FEE_REPORT_DATA.length === 0) {
+            fullReport += `Scanned ${totalRows} rows. No transactions labeled 'Late fee' were found.\n`;
+        } else {
+            LATE_FEE_REPORT_DATA.forEach(row => {
+                let m = row.month.padEnd(12, ' ');
+                let br = "$" + row.baseRent.toFixed(2).padEnd(9, ' ');
+                let lim = "$" + row.limit.toFixed(2).padEnd(8, ' ');
+                let chg = "$" + row.charged.toFixed(2).padEnd(11, ' ');
+                let st = row.status === 'FAIL' ? "🔴 FAIL " : "🟢 PASS ";
+                fullReport += `${m}| ${br}| ${lim}| ${chg}| ${st}| ${row.note}\n`;
+            });
+        }
     }
 
     const opsDiv = document.getElementById('opsWorkflow');
@@ -752,7 +806,6 @@ function renderResults(errors, isStagnant, type, logicSummary, totalError, isLea
 
     document.getElementById('fullReportOutput').value = fullReport;
     document.getElementById('resultsCard').style.display = 'block';
-
     CURRENT_AUDIT = { qcRef: QC_REF, date: new Date().toLocaleDateString(), type, tenant, prop, task, status, errors, isStagnant, opsResponse: "Pending", opsRef: "N/A", logicSummary, penaltyAmt: parseFloat(penalty) };
 }
 
@@ -761,8 +814,6 @@ function checkProofTask() { document.getElementById('btnSave').disabled = (docum
 function copyMissingLeaseNote() { document.getElementById('financeMissingLeaseTemplate').select(); document.execCommand('copy'); }
 function copyOpsComment() { document.getElementById('opsCommentTemplate').select(); document.execCommand('copy'); }
 function copyFullReport() { document.getElementById('fullReportOutput').select(); document.execCommand('copy'); }
-function copyOpsEscalation() { document.getElementById('opsEscalationTemplate').select(); document.execCommand('copy'); }
-
 function saveAudit() {
     if(CURRENT_AUDIT.isStagnant) CURRENT_AUDIT.opsRef = document.getElementById('opsTaskProof').value;
     AUDIT_LOG[QC_REF] = CURRENT_AUDIT;
@@ -816,20 +867,17 @@ function genPDF(id) {
     document.getElementById('pdf-property').innerText = data.prop;
     document.getElementById('pdf-header-status').innerText = data.status;
     document.getElementById('pdf-methodology').innerText = data.logicSummary || "Methodology verification completed.";
-    
     const img = document.getElementById('pdfLogo');
     if(LOGO_DATA) { img.src = LOGO_DATA; img.style.display = 'block'; }
-    
     let content = "";
     if(data.status === 'PASS') {
         content = "✅ Audit Passed: Excellent Work<br>The ledger matches the lease terms perfectly.";
     } else if(data.status === 'PENDING PROOF') {
         content = "⚠️ Caution: Pending Proof of Lease<br>Ledger matches input, but the input amount was not found in the Lease PDF. Escalation initiated.";
     } else {
-        content = `❌ Audit Failed. Financial Errors Found.<br>Total Error: $${(data.penaltyAmt/0.10).toFixed(2)}<br><strong>Penalty Assessed (10%): $${data.penaltyAmt}</strong><br><br>Errors:<br>${data.errors.join('<br>')}`;
+        content = `❌ Audit Failed. Financial Errors Found.<br>Total Error: $${(data.penaltyAmt/5.00).toFixed(2) * 1}<br><strong>Penalty Assessed ($5/error): $${data.penaltyAmt}</strong><br><br>Errors:<br>${data.errors.join('<br>')}`;
     }
     document.getElementById('pdf-content').innerHTML = content;
-    
     const ops = document.getElementById('pdf-ops-section');
     if(data.isStagnant) {
         ops.style.display = 'block';
@@ -837,7 +885,6 @@ function genPDF(id) {
         document.getElementById('pdf-ops-task').innerText = data.opsRef;
         document.getElementById('pdf-ops-response').innerText = data.opsResponse;
     } else { ops.style.display = 'none'; }
-
     const el = document.getElementById('pdf-template');
     el.style.display = 'block';
     html2pdf().from(el).save(`Audit_${data.qcRef}.pdf`).then(() => el.style.display='none');
