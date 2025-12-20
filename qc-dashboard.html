@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PropertyWize QC Hub V32.0 (Smart Scan)</title>
+<title>PropertyWize QC Hub V33.0 (Split Rent Logic)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -157,7 +157,7 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
 
 <div class="navbar">
     <div class="brand">
-        <i class="fas fa-shield-alt"></i> PropertyWize QC Hub V32.0
+        <i class="fas fa-shield-alt"></i> PropertyWize QC Hub V33.0
         <select id="auditTypeSelect" class="mode-select" onchange="toggleAuditMode()">
             <option value="ledger">Tenant Ledger Audit</option>
             <option value="mgmt">Management Fee Audit</option>
@@ -575,7 +575,7 @@ function validateRentInput(input) {
 }
 
 // =========================================================
-// UPDATED LEDGER AUDIT LOGIC (V32.0 - SMART SCAN)
+// UPDATED LEDGER AUDIT LOGIC (V33.0 - SMART SCAN + SPLIT RENT FIX)
 // =========================================================
 function runLedgerAudit() {
     if(!FILES.csv) return alert("Upload CSV");
@@ -613,7 +613,6 @@ function runLedgerAudit() {
         totalRowsScanned++;
 
         // 1. SMART COLUMN MAPPING
-        // Default to User Instructions: O=14 (Date), P=15 (Memo), R=17 (Amount)
         let memoIdx = 15;
         let dateIdx = 14;
         let amtIdx = 17;
@@ -621,24 +620,35 @@ function runLedgerAudit() {
         let rawDesc = (row[memoIdx] || "").toLowerCase();
         
         // 2. FALLBACK: IF NOT IN COL P, SCAN ALL COLS
-        if(!rawDesc.includes('late fee')) {
-            // Smart Scan: Look for "Late fee" in ANY column
-            let foundIdx = row.findIndex(cell => (cell || "").toString().toLowerCase().includes("late fee"));
+        if(!rawDesc.includes('late fee') && !rawDesc.includes('rent') && !rawDesc.includes('benefit')) {
+            // Smart Scan: Look for keywords in ANY column
+            let foundIdx = row.findIndex(cell => {
+                let s = (cell || "").toString().toLowerCase();
+                return s.includes("late fee") || s.includes("rent") || s.includes("benefit");
+            });
+            
             if(foundIdx !== -1) {
-                // Adjust mapping relative to where we found "Late Fee"
                 memoIdx = foundIdx;
-                amtIdx = foundIdx + 2;  // P -> R is +2
-                dateIdx = foundIdx - 1; // P -> O is -1
+                amtIdx = foundIdx + 2; 
+                dateIdx = foundIdx - 1; 
             }
         }
 
         // 3. EXTRACT VALUES
-        let dStr = row[dateIdx] || row[0]; // Fallback to col 0 if date empty
+        let dStr = row[dateIdx] || row[0]; 
         let desc = (row[memoIdx] || "").toLowerCase();
         let amt = parseFloat((row[amtIdx] || "0").replace(/[$,]/g,''));
 
-        // RENT CHECK (Uses standard mapping unless specific row differs)
-        if(dStr && amt > 0 && (desc.includes('rent') || desc.includes('sx8') || desc.includes('hap'))) {
+        // --- RENT AGGREGATION LOGIC (UPDATED V33.0) ---
+        // Now includes "resident benefit", "benefit package", "rbp"
+        if(dStr && amt > 0 && (
+            desc.includes('rent') || 
+            desc.includes('sx8') || 
+            desc.includes('hap') || 
+            desc.includes('resident benefit') || 
+            desc.includes('benefit package') || 
+            desc.includes('rbp')
+        )) {
             let d = new Date(dStr);
             if(!isNaN(d)) {
                 let k = d.getFullYear() + "-" + (d.getMonth()+1);
