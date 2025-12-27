@@ -55,6 +55,9 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
 .score-box { text-align:center; padding:20px; background:#f8f9fa; border-radius:8px; border:1px solid #eee; }
 .score-val { font-size:2rem; font-weight:bold; color:var(--primary); margin:0; }
 .score-label { color:#666; font-size:0.9rem; text-transform:uppercase; }
+.feedback-box { background: #e8f5e9; border-left: 5px solid #28a745; padding: 20px; margin-bottom: 20px; border-radius: 4px; }
+.feedback-header { font-weight: bold; font-size: 1.1rem; color: #155724; margin-bottom: 10px; }
+.feedback-list { margin: 0; padding-left: 20px; line-height: 1.6; }
 /* PDF Styles */
 #pdf-template { display: none; width: 700px; padding: 30px; font-family: 'Helvetica', sans-serif; background: white; color: #333; box-sizing: border-box; }
 .pdf-header-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; border-bottom: 3px solid #003366; padding-bottom: 10px; }
@@ -165,10 +168,18 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
 
         <div id="scoreTab" style="display:none;">
             <h2>Performance Scorecard</h2>
+            <div id="feedbackBox" class="feedback-box">
+                <div class="feedback-header">Performance Review & Feedback</div>
+                <div id="feedbackText">Loading stats...</div>
+            </div>
             <div class="score-grid">
                 <div class="score-box"><h1 class="score-val" id="scoreTotal">0</h1><div class="score-label">Total Audits</div></div>
                 <div class="score-box"><h1 class="score-val" id="scorePass" style="color:var(--accent);">0%</h1><div class="score-label">Pass Rate</div></div>
-                <div class="score-box"><h1 class="score-val" id="scorePenalty" style="color:var(--danger);">$0</h1><div class="score-label">Total Penalties ($5.00/ea)</div></div>
+                <div class="score-box"><h1 class="score-val" id="scorePenalty" style="color:var(--danger);">$0</h1><div class="score-label">Total Penalties</div></div>
+            </div>
+            <div class="card">
+                <h3>Audit Breakdown</h3>
+                <div id="breakdownText"></div>
             </div>
         </div>
 
@@ -177,7 +188,7 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
                 <h2><i class="fas fa-file-invoice-dollar"></i> Tenant Ledger Audit</h2>
                 <div class="card">
                     <div style="display:flex; justify-content:space-between;"><h3>1. Audit Intake</h3><div style="font-weight:bold; color:var(--primary);">QC Ref: <span id="qcRefDisplay">...</span></div></div>
-                    <div class="scanned-data" style="grid-template-columns: 1fr 1fr;"><div><label>Assign To</label><input type="text" id="assignVA" placeholder="Name"></div><div><label>Buildium Task #</label><input type="text" id="mainTaskNumber" placeholder="#12345"></div><div><label>Tenant Name</label><input type="text" id="scanTenant"></div><div><label>Property Address</label><input type="text" id="propAddress"></div></div>
+                    <div class="scanned-data" style="grid-template-columns: 1fr 1fr;"><div><label>Assign To (Auditor Name)</label><input type="text" id="assignVA" placeholder="Name"></div><div><label>Buildium Task #</label><input type="text" id="mainTaskNumber" placeholder="#12345"></div><div><label>Tenant Name</label><input type="text" id="scanTenant"></div><div><label>Property Address</label><input type="text" id="propAddress"></div></div>
                     <hr style="border-top:1px solid #eee; margin:20px 0;">
                     <div class="buildium-check-box">
                         <label style="font-size:1.1rem; color:#003366; display:block; margin-bottom:10px;"><i class="fas fa-search"></i> <strong>Buildium Cross-Check</strong></label>
@@ -197,7 +208,7 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
                 <h2><i class="fas fa-percentage"></i> Management Fee Audit</h2>
                 <div class="card">
                     <div style="display:flex; justify-content:space-between;"><h3>1. Agreement Parameters</h3><div style="font-weight:bold; color:var(--primary);">QC Ref: <span id="qcRefDisplayMgmt">...</span></div></div>
-                    <div class="scanned-data" style="grid-template-columns: 1fr 1fr;"><div><label>Property</label><input type="text" id="mgmtProp"></div><div><label>Assign To</label><input type="text" id="mgmtAssign"></div><div><label>Fee %</label><input type="number" id="mgmtFeePct"></div><div><label>Min. Fee ($)</label><input type="number" id="mgmtMin" value="0"></div></div>
+                    <div class="scanned-data" style="grid-template-columns: 1fr 1fr;"><div><label>Property</label><input type="text" id="mgmtProp"></div><div><label>Assign To (Auditor Name)</label><input type="text" id="mgmtAssign"></div><div><label>Fee %</label><input type="number" id="mgmtFeePct"></div><div><label>Min. Fee ($)</label><input type="number" id="mgmtMin" value="0"></div></div>
                     <div class="buildium-check-box" style="margin-top:15px;">
                         <label style="color:#003366;"><strong>Did Rent Change during this period?</strong></label>
                         <div style="margin-top:5px;"><input type="radio" name="mgmtRentCheck" value="no" checked onchange="toggleMgmtRent('no')"> No <input type="radio" name="mgmtRentCheck" value="yes" onchange="toggleMgmtRent('yes')"> Yes</div>
@@ -257,7 +268,7 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
             <h2>Audit Log</h2>
             <div class="card">
                 <table id="historyTable" style="width:100%; border-collapse:collapse;">
-                    <thead><tr style="background:#eee; text-align:left;"><th style="padding:10px;">Date</th><th>QC Ref</th><th>Type</th><th>Result</th><th>Penalty</th><th>Ops Status</th><th>Action</th></tr></thead>
+                    <thead><tr style="background:#eee; text-align:left;"><th style="padding:10px;">Date</th><th>Auditor</th><th>Property</th><th>QC Ref</th><th>Result</th><th>Penalty</th><th>Ops Status</th><th>Action</th></tr></thead>
                     <tbody id="historyBody"></tbody>
                 </table>
             </div>
@@ -337,6 +348,10 @@ function saveAudit() {
     if(CURRENT_AUDIT.isStagnant) CURRENT_AUDIT.opsRef = document.getElementById('opsTaskProof').value; 
     CURRENT_AUDIT.timestamp = new Date().toISOString(); 
     
+    // Capture Auditor Name based on mode
+    const mode = document.getElementById('auditTypeSelect').value;
+    CURRENT_AUDIT.auditor = mode === 'ledger' ? document.getElementById('assignVA').value : document.getElementById('mgmtAssign').value;
+
     if(isConnected) { 
         db.collection("audits").doc(QC_REF).set(CURRENT_AUDIT)
             .then(() => alert("Audit Saved to Cloud!"))
@@ -358,13 +373,45 @@ function toggleAuditMode() { const mode = document.getElementById('auditTypeSele
 function toggleLeaseLogic(mode) { document.getElementById('logicSingle').style.display = mode === 'single' ? 'block' : 'none'; document.getElementById('logicMulti').style.display = mode === 'multi' ? 'block' : 'none'; }
 function toggleMgmtRent(val) { document.getElementById('mgmtRentSingle').style.display = val === 'no' ? 'block' : 'none'; document.getElementById('mgmtRentMulti').style.display = val === 'yes' ? 'grid' : 'none'; }
 function checkTAT() { const now = new Date(); const overdue = []; Object.values(AUDIT_LOG).forEach(a => { if(a.status === 'PASS') return; const auditDate = new Date(a.date); const diffDays = Math.ceil(Math.abs(now - auditDate) / (1000 * 60 * 60 * 24)); if(diffDays > 1) overdue.push(`${a.qcRef} - ${a.tenant || a.prop}`); }); if(overdue.length > 0) { document.getElementById('tatAlertBox').style.display = 'block'; document.getElementById('tatList').innerHTML = overdue.map(i => `<li>${i}</li>`).join(''); } }
-// UPDATED COPY FUNCTIONS FOR V39
 function copyTatEmail() { navigator.clipboard.writeText(document.getElementById('tatEmailTemplate').value).then(() => alert("Email Copied!")); }
 function copyMissingLeaseNote() { navigator.clipboard.writeText(document.getElementById('financeMissingLeaseTemplate').value).then(() => alert("Task Note Copied!")); }
 function copyOpsComment() { navigator.clipboard.writeText(document.getElementById('opsCommentTemplate').value).then(() => alert("Note Copied!")); }
 function copyFullReport() { navigator.clipboard.writeText(document.getElementById('fullReportOutput').value).then(() => alert("Report Copied to Clipboard!")); }
 
-function updateScorecard() { const audits = Object.values(AUDIT_LOG); const total = audits.length; const passed = audits.filter(a => a.status === 'PASS').length; const rate = total === 0 ? 0 : Math.round((passed / total) * 100); const penalties = audits.reduce((sum, a) => sum + (a.penaltyAmt || 0), 0); document.getElementById('scoreTotal').innerText = total; document.getElementById('scorePass').innerText = rate + "%"; document.getElementById('scorePenalty').innerText = "$" + penalties.toFixed(2); }
+// --- ENHANCED SCORECARD LOGIC ---
+function updateScorecard() { 
+    const audits = Object.values(AUDIT_LOG); 
+    const total = audits.length; 
+    const passed = audits.filter(a => a.status === 'PASS').length; 
+    const rate = total === 0 ? 0 : Math.round((passed / total) * 100); 
+    const penalties = audits.reduce((sum, a) => sum + (a.penaltyAmt || 0), 0); 
+    
+    document.getElementById('scoreTotal').innerText = total; 
+    document.getElementById('scorePass').innerText = rate + "%"; 
+    document.getElementById('scorePenalty').innerText = "$" + penalties.toFixed(2);
+
+    // Feedback Logic
+    const feedbackDiv = document.getElementById('feedbackText');
+    const breakdownDiv = document.getElementById('breakdownText');
+    
+    // Performance Text
+    let msg = "";
+    if(rate === 100) msg = "🌟 <strong>Outstanding Performance!</strong> 100% Quality Score. Great attention to detail.";
+    else if(rate >= 90) msg = "✅ <strong>Great Job!</strong> High quality standard maintained. Review minor errors below.";
+    else if(rate >= 75) msg = "⚠️ <strong>Needs Improvement.</strong> Quality is slipping below standard. Focus on Lease Verification.";
+    else msg = "🚨 <strong>Action Required.</strong> Critical failure rate. Retraining recommended on Audit Protocols.";
+    
+    feedbackDiv.innerHTML = msg;
+
+    // Breakdown Logic
+    let failLedger = audits.filter(a => a.type.includes("Ledger") && a.status === 'FAIL').length;
+    let failMgmt = audits.filter(a => a.type.includes("Management") && a.status === 'FAIL').length;
+    
+    breakdownDiv.innerHTML = `<ul style='margin:0; padding-left:20px;'>
+        <li><strong>Tenant Ledger Audits:</strong> ${failLedger} Failures</li>
+        <li><strong>Management Fee Audits:</strong> ${failMgmt} Failures</li>
+    </ul>`;
+}
 
 function processFile(input, type) {
     if(input.files.length === 0) return;
@@ -738,7 +785,10 @@ function renderHistoryRow(id, isNew) {
     let statusIcon = data.status === 'PASS' ? '✅' : (data.status === 'PENDING PROOF' ? '⚠️' : '❌');
     let reRunBtn = (data.status === 'FAIL' || data.status === 'PENDING PROOF') ? `<button class="btn btn-primary" onclick="reRunAudit('${id}')" style="padding:2px 6px; margin-left:5px;"><i class="fas fa-sync"></i></button>` : '';
     let row = document.getElementById(`row-${id}`);
-    const html = `<td>${data.date.split('T')[0]}</td><td>${data.qcRef}</td><td>${data.type}</td><td>${statusIcon} ${data.status}</td><td>${penaltyTxt}</td><td>${opsBadge}</td><td>${updateBtn} <button class="btn btn-outline" onclick="genPDF('${id}')" style="padding:2px 6px;"><i class="fas fa-file-pdf"></i></button>${reRunBtn}</td>`;
+    
+    // UPDATED TABLE ROW HTML FOR V40 (INCLUDES AUDITOR/PROPERTY)
+    const html = `<td>${data.date.split('T')[0]}</td><td>${data.auditor || "-"}</td><td>${data.prop || "-"}</td><td>${data.qcRef}</td><td>${statusIcon} ${data.status}</td><td>${penaltyTxt}</td><td>${opsBadge}</td><td>${updateBtn} <button class="btn btn-outline" onclick="genPDF('${id}')" style="padding:2px 6px;"><i class="fas fa-file-pdf"></i></button>${reRunBtn}</td>`;
+    
     if(row) { row.innerHTML = html; } 
     else {
         const table = document.getElementById('historyTable').getElementsByTagName('tbody')[0];
