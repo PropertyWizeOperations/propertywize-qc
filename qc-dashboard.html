@@ -268,7 +268,7 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
             <h2>Audit Log</h2>
             <div class="card">
                 <table id="historyTable" style="width:100%; border-collapse:collapse;">
-                    <thead><tr style="background:#eee; text-align:left;"><th style="padding:10px;">Date</th><th>Auditor</th><th>Property</th><th>QC Ref</th><th>Result</th><th>Penalty</th><th>Ops Status</th><th>Action</th></tr></thead>
+                    <thead><tr style="background:#eee; text-align:left;"><th style="padding:10px;">Date</th><th>Auditor</th><th>Type</th><th>Property</th><th>QC Ref</th><th>Result</th><th>Penalty</th><th>Ops Status</th><th>Action</th></tr></thead>
                     <tbody id="historyBody"></tbody>
                 </table>
             </div>
@@ -348,9 +348,15 @@ function saveAudit() {
     if(CURRENT_AUDIT.isStagnant) CURRENT_AUDIT.opsRef = document.getElementById('opsTaskProof').value; 
     CURRENT_AUDIT.timestamp = new Date().toISOString(); 
     
-    // Capture Auditor Name based on mode
+    // Capture Auditor Name & Type
     const mode = document.getElementById('auditTypeSelect').value;
-    CURRENT_AUDIT.auditor = mode === 'ledger' ? document.getElementById('assignVA').value : document.getElementById('mgmtAssign').value;
+    if (mode === 'ledger') {
+        CURRENT_AUDIT.auditor = document.getElementById('assignVA').value || "Unknown";
+        CURRENT_AUDIT.type = "Ledger Audit";
+    } else {
+        CURRENT_AUDIT.auditor = document.getElementById('mgmtAssign').value || "Unknown";
+        CURRENT_AUDIT.type = "Management Fee Audit";
+    }
 
     if(isConnected) { 
         db.collection("audits").doc(QC_REF).set(CURRENT_AUDIT)
@@ -404,8 +410,8 @@ function updateScorecard() {
     feedbackDiv.innerHTML = msg;
 
     // Breakdown Logic
-    let failLedger = audits.filter(a => a.type.includes("Ledger") && a.status === 'FAIL').length;
-    let failMgmt = audits.filter(a => a.type.includes("Management") && a.status === 'FAIL').length;
+    let failLedger = audits.filter(a => (a.type || "").includes("Ledger") && a.status === 'FAIL').length;
+    let failMgmt = audits.filter(a => (a.type || "").includes("Management") && a.status === 'FAIL').length;
     
     breakdownDiv.innerHTML = `<ul style='margin:0; padding-left:20px;'>
         <li><strong>Tenant Ledger Audits:</strong> ${failLedger} Failures</li>
@@ -785,10 +791,7 @@ function renderHistoryRow(id, isNew) {
     let statusIcon = data.status === 'PASS' ? '✅' : (data.status === 'PENDING PROOF' ? '⚠️' : '❌');
     let reRunBtn = (data.status === 'FAIL' || data.status === 'PENDING PROOF') ? `<button class="btn btn-primary" onclick="reRunAudit('${id}')" style="padding:2px 6px; margin-left:5px;"><i class="fas fa-sync"></i></button>` : '';
     let row = document.getElementById(`row-${id}`);
-    
-    // UPDATED TABLE ROW HTML FOR V40 (INCLUDES AUDITOR/PROPERTY)
-    const html = `<td>${data.date.split('T')[0]}</td><td>${data.auditor || "-"}</td><td>${data.prop || "-"}</td><td>${data.qcRef}</td><td>${statusIcon} ${data.status}</td><td>${penaltyTxt}</td><td>${opsBadge}</td><td>${updateBtn} <button class="btn btn-outline" onclick="genPDF('${id}')" style="padding:2px 6px;"><i class="fas fa-file-pdf"></i></button>${reRunBtn}</td>`;
-    
+    const html = `<td>${data.date.split('T')[0]}</td><td>${data.auditor || "-"}</td><td>${data.type || "Audit"}</td><td>${data.prop || "-"}</td><td>${data.qcRef}</td><td>${statusIcon} ${data.status}</td><td>${penaltyTxt}</td><td>${opsBadge}</td><td>${updateBtn} <button class="btn btn-outline" onclick="genPDF('${id}')" style="padding:2px 6px;"><i class="fas fa-file-pdf"></i></button>${reRunBtn}</td>`;
     if(row) { row.innerHTML = html; } 
     else {
         const table = document.getElementById('historyTable').getElementsByTagName('tbody')[0];
