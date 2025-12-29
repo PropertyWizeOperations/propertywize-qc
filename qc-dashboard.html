@@ -464,8 +464,11 @@ function runLedgerAudit() {
     if(isNaN(rJan)) return alert("Enter Rent Amount");
 
     let errors = [], lateFeesChecked = 0;
+    
+    // --- NEW: Create a Detailed Log String ---
+    let detailedLog = "DETAILED VERIFICATION LOG:\nDate       | Type       | Chrg    | Exp.    | Status\n------------------------------------------------------\n";
 
-    // LATE FEE
+    // LATE FEE CHECK
     LEDGER_CSV.forEach(row => {
         let dateVal = null;
         for(let col of row) {
@@ -476,6 +479,8 @@ function runLedgerAudit() {
         }
         if(!dateVal) return;
         let rowStr = row.join("||").toLowerCase();
+        
+        // If we find a Late Fee, check it AND log it
         if(rowStr.includes('late fee') && !rowStr.includes('water') && !rowStr.includes('utility')) {
             lateFeesChecked++;
             let m = new Date(dateVal).getMonth() + 1;
@@ -486,17 +491,29 @@ function runLedgerAudit() {
                 let v = parseFloat((c||"").toString().replace(/[$,]/g,''));
                 if(!isNaN(v) && v > 0 && v < 500) amt = v;
             }
-            if(Math.abs(amt - expected) > 0.10) {
+            
+            let isPass = Math.abs(amt - expected) <= 0.10;
+            let statusIcon = isPass ? "✅ PASS" : "❌ FAIL";
+            
+            // Append to our new log
+            detailedLog += `${dateVal.padEnd(10)} | Late Fee   | $${Math.round(amt).toString().padEnd(5)} | $${Math.round(expected).toString().padEnd(5)} | ${statusIcon}\n`;
+            
+            if(!isPass) {
                 errors.push(`Late Fee Mismatch ${dateVal}: Charged $${amt.toFixed(2)} | Expected 5% ($${expected.toFixed(2)})`);
             }
         }
     });
 
+    if(lateFeesChecked === 0) detailedLog += "NOTE: No 'Late Fee' line items found to audit.\n";
+
     // FINANCE ERROR (PDF SCAN)
     let financeStatus = "NOT CHECKED (Upload PDF)";
     if(FILES.ledgerPdf && PDF_TEXT) {
-        financeStatus = "✅ PASS (No Priority Violations)";
+        financeStatus = "✅ PASS";
+        detailedLog += `\nPDF ALLOCATION CHECK:\n`;
         const suspiciousKeys = ["Rent Court", "Legal", "Warrant"];
+        let scanFail = false;
+        
         let chunks = PDF_TEXT.split(/(\d{1,2}\/\d{1,2}\/\d{4})/); 
         for(let i=1; i<chunks.length; i+=2) {
             let dateStr = chunks[i];
@@ -507,22 +524,27 @@ function runLedgerAudit() {
                         let amtMatch = content.match(/\(\$([0-9,]+\.[0-9]{2})\)/);
                         if(amtMatch && parseFloat(amtMatch[1].replace(/,/g,'')) > 200) {
                             errors.push(`FINANCE ERROR (${dateStr}): Payment ($${amtMatch[1]}) misallocated to '${key}' instead of Rent.`);
-                            financeStatus = "🚨 FAIL (Priority Violation)";
+                            financeStatus = "🚨 FAIL";
+                            scanFail = true;
+                            detailedLog += `${dateStr} | Misalloc   | ${key} | Rent    | ❌ FAIL\n`;
                         }
                     }
                 }
             }
         }
+        if(!scanFail) detailedLog += "Scanned for [Rent Court, Legal, Warrant] -> ✅ No Misallocations Found.\n";
     }
 
     let status = errors.length === 0 ? "PASS" : "FAIL";
     let penalty = status === "FAIL" ? (errors.length * 5).toFixed(2) : "0.00";
-    let report = `QC AUDIT REPORT [Ref: ${QC_REF}]\nDate: ${new Date().toLocaleDateString()}\nStatus: ${status}\nPenalty: $${penalty}\n\n${logicSummary}\nLate Fees Scanned: ${lateFeesChecked}\nAllocation Logic: Scanned PDF for 'Finance Error' (Fee Priority).\nFinance Error Check: ${financeStatus}\n------------------------------------------------\nFINDINGS:\n`;
+    
+    // Add the detailedLog to the final report
+    let report = `QC AUDIT REPORT [Ref: ${QC_REF}]\nDate: ${new Date().toLocaleDateString()}\nStatus: ${status}\nPenalty: $${penalty}\n\n${logicSummary}\n\n${detailedLog}\n------------------------------------------------\nSUMMARY FINDINGS:\n`;
     
     if(status === 'FAIL') {
         report += errors.map(e => `- ${e}`).join('\n');
-        report += `\n\n------------------------------------------------\nNEXT STEPS:\nPlease review findings on QC Dashboard: https://propertywizeoperations.github.io/propertywize-qc/qc-dashboard.html\n\n1. ACKNOWLEDGE: If you agree, correct ledger and click "Acknowledge" on the dashboard.\n2. APPEAL: If you disagree, click "Appeal" on the dashboard and provide reasoning.`;
-    } else report += "- No financial discrepancies found.";
+        report += `\n\n------------------------------------------------\nNEXT STEPS:\nPlease review findings on QC Dashboard.\n1. ACKNOWLEDGE: If you agree, correct ledger and click "Acknowledge".\n2. APPEAL: If you disagree, click "Appeal".`;
+    } else report += "- All audited items matched expected values.\n- No financial discrepancies found.";
 
     document.getElementById('fullReportOutput').value = report;
     document.getElementById('resultsCard').style.display = 'block';
