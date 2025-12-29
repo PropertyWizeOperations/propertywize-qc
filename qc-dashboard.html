@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -368,23 +367,50 @@ let LEDGER_CSV = [], MGMT_CSV = [], PDF_TEXT = "";
 let FILES = { csv: false, ledgerPdf: false, lease: false, mgmtCsv: false };
 let CURRENT_AUDIT = {}, AUDIT_LOG = {}, QC_REF = "QC-" + Math.floor(100000 + Math.random() * 900000);
 let LOGO_DATA = null, EDITING_ID = null, ACTION_TYPE = "";
-
 function initApp() {
+    // 1. Load Local Backup first (so it feels fast)
     const localData = localStorage.getItem('pw_qc_history');
     if (localData) {
         AUDIT_LOG = JSON.parse(localData);
         Object.keys(AUDIT_LOG).reverse().forEach(key => renderHistoryRow(key, false));
         updateScorecard();
     }
+
+    // 2. Load Saved Preferences (Logo, Auditor Name)
     const savedLogo = localStorage.getItem('pw_qc_logo');
-    if(savedLogo) { LOGO_DATA = savedLogo; document.getElementById('logoPreview').src=LOGO_DATA; document.getElementById('logoPreview').style.display='block'; }
-    if(localStorage.getItem('pw_qc_auditor')) document.getElementById('globalAuditor').value = localStorage.getItem('pw_qc_auditor');
-    document.getElementById('qcRefDisplay').innerText = QC_REF;
-    if(isConnected) {
-        document.getElementById('dbStatus').innerHTML = "🟢 <strong>Connected</strong>";
-        document.getElementById('dbStatus').style.color = "green";
+    if(savedLogo) { 
+        LOGO_DATA = savedLogo; 
+        document.getElementById('logoPreview').src=LOGO_DATA; 
+        document.getElementById('logoPreview').style.display='block'; 
     }
-}
+    if(localStorage.getItem('pw_qc_auditor')) {
+        document.getElementById('globalAuditor').value = localStorage.getItem('pw_qc_auditor');
+    }
+    document.getElementById('qcRefDisplay').innerText = QC_REF;
+
+    // 3. THE FIX: CONNECT TO DATABASE & LISTEN FOR DATA
+    if(isConnected) {
+        document.getElementById('dbStatus').innerHTML = "🟢 <strong>Connected (Syncing...)</strong>";
+        document.getElementById('dbStatus').style.color = "green";
+        
+        // This listener pulls data from the cloud and keeps it updated in real-time
+        db.collection("audits").onSnapshot((snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+                const data = change.doc.data();
+                // Whether added or modified, update our local list
+                AUDIT_LOG[data.qcRef] = data; 
+                // Update the table on the screen
+                renderHistoryRow(data.qcRef, false); 
+            });
+            
+            // Save to local machine so it loads faster next time
+            localStorage.setItem('pw_qc_history', JSON.stringify(AUDIT_LOG));
+            updateScorecard();
+            
+            document.getElementById('dbStatus').innerHTML = "🟢 <strong>Connected & Synced</strong>";
+        });
+    }
+	}
 
 // --- FILE PROCESSOR ---
 function processFile(input, type) {
