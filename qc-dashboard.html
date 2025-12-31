@@ -156,9 +156,26 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
     <h3>Detailed Findings</h3>
     <div id="pdf-content" style="line-height: 1.6; font-size:13px; white-space: pre-wrap; font-family: monospace;"></div>
     <div id="pdf-ops-section" style="display:none; margin-top:20px; border-top:2px dashed #ccc; padding-top:10px;">
-        <h4>Ops Flag Status</h4>
-        <p><strong>Status:</strong> <span id="pdf-ops-status"></span> | <strong>Ref:</strong> <span id="pdf-ops-ref"></span></p>
-    </div>
+    <h4 style="margin-bottom:5px; color:#d69e2e;">⚠️ Operational Flag Resolved</h4>
+    <table style="width:100%; font-size:12px; border-collapse:collapse;">
+        <tr>
+            <td style="padding:4px; font-weight:bold; width:100px;">Status:</td>
+            <td style="padding:4px;"><span id="pdf-ops-status" style="color:green; font-weight:bold;"></span></td>
+        </tr>
+        <tr>
+            <td style="padding:4px; font-weight:bold;">Resolution:</td>
+            <td style="padding:4px;"><span id="pdf-ops-reason"></span></td>
+        </tr>
+        <tr>
+            <td style="padding:4px; font-weight:bold;">Proof / Ref:</td>
+            <td style="padding:4px;"><span id="pdf-ops-ref"></span></td>
+        </tr>
+        <tr>
+            <td style="padding:4px; font-weight:bold; vertical-align:top;">Notes:</td>
+            <td style="padding:4px; font-style:italic;"><span id="pdf-ops-notes"></span></td>
+        </tr>
+    </table>
+</div>
 </div>
 
 <div class="navbar">
@@ -224,6 +241,7 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
                             <option value="yes">Yes (Rent Changed)</option>
                         </select>
                     </div>
+					
                     <div class="scanned-data" style="grid-template-columns: 1fr 1fr;">
                         <div><label>Buildium Task Assignee</label><input type="text" id="assignVA" placeholder="e.g. Finance"></div>
                         <div><label>Buildium Task #</label><input type="text" id="mainTaskNumber" placeholder="#12345"></div>
@@ -232,8 +250,30 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
                     </div>
                     <hr style="border-top:1px solid #eee; margin:20px 0;">
                     <div class="buildium-check-box">
-                        <label style="font-size:1.1rem; color:#003366; display:block; margin-bottom:10px;"><i class="fas fa-search"></i> <strong>Rent Verification</strong></label>
-                        <div id="logicConstant" style="display:block;">
+						<label style="font-size:1.1rem; color:#003366; display:block; margin-bottom:10px;"><i class="fas fa-search"></i> <strong>Rent Verification</strong></label>
+   <div style="margin-top:15px; margin-bottom:15px; background:#fff8e1; padding:15px; border-radius:6px; border-left:5px solid #ff9800; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+    <div style="font-weight:bold; color:#e65100; display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+        <i class="fas fa-info-circle"></i> Section 8 / Tenant Portion Workflow
+    </div>
+    
+    <label style="cursor:pointer; display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+        <input type="checkbox" id="excludeHap" style="width:18px; height:18px; accent-color:#ff9800;">
+        <span style="font-weight:bold; font-size:1rem; color:#333;">Audit Tenant Portion Only</span>
+    </label>
+
+    <div style="font-size:0.85rem; color:#444; line-height:1.5; background:white; padding:10px; border:1px solid #ffeeba; border-radius:4px;">
+        <strong>When to use:</strong> Rent Income Charge (> $0.00) AND Subsidy/HAP/Section 8 Rent Charged (> $0.00).
+        <hr style="margin:8px 0; border:0; border-top:1px solid #eee;">
+        <strong>The Rule:</strong>
+        <ol style="margin:5px 0; padding-left:20px; gap: 5px; display: flex; flex-direction: column;">
+            <li><strong>Check Ledger:</strong> Compare <em>Total Rent</em> (Tenant Charge + Subsidy Charge) on <strong>Jan 1</strong> vs <strong>Dec 1</strong>.</li>
+            <li><strong>If Total Rent Changed:</strong> Select "Yes (Rent Changed)" above.</li>
+            <li><strong>Data Entry:</strong> Enter <u>ONLY</u> the <strong>Tenant Portion</strong> in the Old/New Rent fields below (Do not enter the full rent).</li>
+            <li><strong>If no portion/subsidy:</strong> Leave unchecked and use full rent.</li>
+        </ol>
+    </div>
+</div>
+   <div id="logicConstant" style="display:block;">
                             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
                                 <div><label>Current Rent ($)</label><input type="number" id="rentConst" placeholder="1550.00"></div>
                                 <div><label>Lease Start</label><input type="date" id="leaseStartInput"></div>
@@ -355,9 +395,8 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
         </div>
     </div>
 </div>
-
 <script>
-// --- CONFIG ---
+// --- CONFIG & SETUP ---
 const firebaseConfig = { apiKey: "AIzaSyAHDlSQ_mpC-m_OMwhuJToCeRk9MnRNf08", authDomain: "propertywize-qc-hub.firebaseapp.com", projectId: "propertywize-qc-hub", storageBucket: "propertywize-qc-hub.firebasestorage.app", messagingSenderId: "1056520755896", appId: "1:1056520755896:web:c088548af03fd03323f24d" };
 let db = null, isConnected = false;
 try { const app = firebase.initializeApp(firebaseConfig); db = firebase.firestore(); isConnected = true; } catch (e) { console.error("Firebase Error", e); }
@@ -367,52 +406,43 @@ let LEDGER_CSV = [], MGMT_CSV = [], PDF_TEXT = "";
 let FILES = { csv: false, ledgerPdf: false, lease: false, mgmtCsv: false };
 let CURRENT_AUDIT = {}, AUDIT_LOG = {}, QC_REF = "QC-" + Math.floor(100000 + Math.random() * 900000);
 let LOGO_DATA = null, EDITING_ID = null, ACTION_TYPE = "";
+let IS_RERUN_MODE = false;
+
 function initApp() {
-    // 1. Load Local Backup first (so it feels fast)
+    // 1. Load Local Data
     const localData = localStorage.getItem('pw_qc_history');
     if (localData) {
         AUDIT_LOG = JSON.parse(localData);
         Object.keys(AUDIT_LOG).reverse().forEach(key => renderHistoryRow(key, false));
         updateScorecard();
     }
-
-    // 2. Load Saved Preferences (Logo, Auditor Name)
-    const savedLogo = localStorage.getItem('pw_qc_logo');
-    if(savedLogo) { 
-        LOGO_DATA = savedLogo; 
+    // 2. Load Prefs
+    if(localStorage.getItem('pw_qc_logo')) { 
+        LOGO_DATA = localStorage.getItem('pw_qc_logo'); 
         document.getElementById('logoPreview').src=LOGO_DATA; 
         document.getElementById('logoPreview').style.display='block'; 
     }
-    if(localStorage.getItem('pw_qc_auditor')) {
-        document.getElementById('globalAuditor').value = localStorage.getItem('pw_qc_auditor');
-    }
+    if(localStorage.getItem('pw_qc_auditor')) document.getElementById('globalAuditor').value = localStorage.getItem('pw_qc_auditor');
     document.getElementById('qcRefDisplay').innerText = QC_REF;
 
-    // 3. THE FIX: CONNECT TO DATABASE & LISTEN FOR DATA
+    // 3. Database Sync
     if(isConnected) {
         document.getElementById('dbStatus').innerHTML = "🟢 <strong>Connected (Syncing...)</strong>";
         document.getElementById('dbStatus').style.color = "green";
-        
-        // This listener pulls data from the cloud and keeps it updated in real-time
         db.collection("audits").onSnapshot((snapshot) => {
             snapshot.docChanges().forEach((change) => {
                 const data = change.doc.data();
-                // Whether added or modified, update our local list
                 AUDIT_LOG[data.qcRef] = data; 
-                // Update the table on the screen
                 renderHistoryRow(data.qcRef, false); 
             });
-            
-            // Save to local machine so it loads faster next time
             localStorage.setItem('pw_qc_history', JSON.stringify(AUDIT_LOG));
             updateScorecard();
-            
             document.getElementById('dbStatus').innerHTML = "🟢 <strong>Connected & Synced</strong>";
         });
     }
-	}
+}
 
-// --- FILE PROCESSOR ---
+// --- FILE PROCESSING ---
 function processFile(input, type) {
     if(input.files.length === 0) return;
     if(type === 'csv') {
@@ -424,36 +454,34 @@ function processFile(input, type) {
         fileReader.onload = function() {
             const typedarray = new Uint8Array(this.result);
             pdfjsLib.getDocument(typedarray).promise.then(pdf => {
-                let fullText = "";
-                let count = 0;
+                let fullText = ""; let count = 0;
                 for(let i=1; i<=pdf.numPages; i++) {
                     pdf.getPage(i).then(page => page.getTextContent()).then(text => {
                         fullText += text.items.map(s => s.str).join(" ") + " ";
                         count++;
-                        if(count === pdf.numPages) {
-                            PDF_TEXT = fullText;
-                            document.getElementById('pdfStatus').innerText = "✅ Scanned";
-                            FILES.ledgerPdf = true;
-                        }
+                        if(count === pdf.numPages) { PDF_TEXT = fullText; document.getElementById('pdfStatus').innerText = "✅ Scanned"; FILES.ledgerPdf = true; }
                     });
                 }
             });
         };
         fileReader.readAsArrayBuffer(input.files[0]);
-    } else {
-        document.getElementById('leaseStatus').innerText = "✅ Loaded"; FILES.lease = true;
-    }
+    } else { document.getElementById('leaseStatus').innerText = "✅ Loaded"; FILES.lease = true; }
 }
 
-// --- LOGIC ---
+// --- CORE AUDIT LOGIC (Includes Section 8 & RBP Fixes) ---
 function runLedgerAudit() {
     if(!FILES.csv) return alert("Upload Tenant Ledger CSV (Slot 1)");
     
+    // 1. SETTINGS
     const rentChanged = document.getElementById("rentChangeToggle").value === 'yes';
+    const excludeHap = document.getElementById('excludeHap') ? document.getElementById('excludeHap').checked : false;
+
     let rJan, rDec, splitMonth, logicSummary;
+    
+    // 2. INPUTS
     if(!rentChanged) {
         rJan = parseFloat(document.getElementById('rentConst').value);
-        rDec = rJan; splitMonth = 13;
+        rDec = rJan; splitMonth = 13; 
         logicSummary = `METHODOLOGY: Verified Constant Rent ($${rJan}).`;
     } else {
         rJan = parseFloat(document.getElementById('rentOld').value);
@@ -461,14 +489,14 @@ function runLedgerAudit() {
         splitMonth = parseInt(document.getElementById('changeMonth').value);
         logicSummary = `METHODOLOGY: Verified Split Rent ($${rJan} -> $${rDec}).`;
     }
+
+    if(excludeHap) logicSummary += " [Scope: Tenant Portion Only (Excl HAP)]";
     if(isNaN(rJan)) return alert("Enter Rent Amount");
 
-    let errors = [], lateFeesChecked = 0;
-    
-    // --- NEW: Create a Detailed Log String ---
+    let monthlyTotals = {}, errors = [], lateFeesChecked = 0, totalError = 0;
     let detailedLog = "DETAILED VERIFICATION LOG:\nDate       | Type       | Chrg    | Exp.    | Status\n------------------------------------------------------\n";
 
-    // LATE FEE CHECK
+    // 3. SCAN CSV
     LEDGER_CSV.forEach(row => {
         let dateVal = null;
         for(let col of row) {
@@ -478,42 +506,60 @@ function runLedgerAudit() {
             }
         }
         if(!dateVal) return;
-        let rowStr = row.join("||").toLowerCase();
         
-        // If we find a Late Fee, check it AND log it
-        if(rowStr.includes('late fee') && !rowStr.includes('water') && !rowStr.includes('utility')) {
+        let rowStr = row.join("||").toLowerCase();
+        let desc = row[15] ? row[15].toLowerCase() : rowStr; 
+        let amt = 0;
+        for(let c of row) { let v = parseFloat((c||"").toString().replace(/[$,]/g,'')); if(!isNaN(v) && v > 0 && v < 5000) amt = v; }
+
+        // FILTER: Exclude HAP if checkbox is ON
+        if (excludeHap && (rowStr.includes('hap') || rowStr.includes('sx8') || rowStr.includes('subsidy'))) return;
+
+        // SUM RENT: Only sum lines that explicitly say Rent/Sx8/HAP. Ignore 'Benefit' or 'Package' to avoid double counting.
+        if(dateVal && amt > 0 && (desc.includes('rent') || desc.includes('sx8') || desc.includes('hap'))) {
+            let d = new Date(dateVal); 
+            if(!isNaN(d)) { 
+                let k = d.getFullYear() + "-" + (d.getMonth()+1); 
+                if(!monthlyTotals[k]) monthlyTotals[k] = { val:0, m: d.getMonth()+1 }; 
+                monthlyTotals[k].val += amt; 
+            }
+        }
+
+        const isNotUtility = !rowStr.includes('water') && !rowStr.includes('utility');
+
+        // LATE FEE CHECK
+        if(rowStr.includes('late fee') && isNotUtility) {
             lateFeesChecked++;
             let m = new Date(dateVal).getMonth() + 1;
             let currentRent = (!rentChanged || m < splitMonth) ? rJan : rDec;
             let expected = currentRent * 0.05;
-            let amt = 0;
-            for(let c of row) {
-                let v = parseFloat((c||"").toString().replace(/[$,]/g,''));
-                if(!isNaN(v) && v > 0 && v < 500) amt = v;
-            }
-            
             let isPass = Math.abs(amt - expected) <= 0.10;
             let statusIcon = isPass ? "✅ PASS" : "❌ FAIL";
             
-            // Append to our new log
             detailedLog += `${dateVal.padEnd(10)} | Late Fee   | $${Math.round(amt).toString().padEnd(5)} | $${Math.round(expected).toString().padEnd(5)} | ${statusIcon}\n`;
             
-            if(!isPass) {
-                errors.push(`Late Fee Mismatch ${dateVal}: Charged $${amt.toFixed(2)} | Expected 5% ($${expected.toFixed(2)})`);
-            }
+            if(!isPass) errors.push(`Late Fee Mismatch ${dateVal}: Charged $${amt.toFixed(2)} | Expected 5% ($${expected.toFixed(2)})`);
+        }
+    });
+
+    // 4. VERIFY TOTALS
+    Object.keys(monthlyTotals).sort().forEach(k => {
+        let item = monthlyTotals[k]; 
+        let expected = (!rentChanged || item.m < splitMonth) ? rJan : rDec;
+        if(Math.abs(item.val - expected) > 1.0) { 
+            errors.push(`Mismatch ${k}: Charged $${item.val.toFixed(2)} | Expected $${expected.toFixed(2)}`); 
+            totalError += Math.abs(item.val - expected); 
         }
     });
 
     if(lateFeesChecked === 0) detailedLog += "NOTE: No 'Late Fee' line items found to audit.\n";
 
-    // FINANCE ERROR (PDF SCAN)
-    let financeStatus = "NOT CHECKED (Upload PDF)";
+    // 5. PDF SCAN
+    let financeStatus = "NOT CHECKED";
     if(FILES.ledgerPdf && PDF_TEXT) {
-        financeStatus = "✅ PASS";
         detailedLog += `\nPDF ALLOCATION CHECK:\n`;
         const suspiciousKeys = ["Rent Court", "Legal", "Warrant"];
         let scanFail = false;
-        
         let chunks = PDF_TEXT.split(/(\d{1,2}\/\d{1,2}\/\d{4})/); 
         for(let i=1; i<chunks.length; i+=2) {
             let dateStr = chunks[i];
@@ -524,7 +570,6 @@ function runLedgerAudit() {
                         let amtMatch = content.match(/\(\$([0-9,]+\.[0-9]{2})\)/);
                         if(amtMatch && parseFloat(amtMatch[1].replace(/,/g,'')) > 200) {
                             errors.push(`FINANCE ERROR (${dateStr}): Payment ($${amtMatch[1]}) misallocated to '${key}' instead of Rent.`);
-                            financeStatus = "🚨 FAIL";
                             scanFail = true;
                             detailedLog += `${dateStr} | Misalloc   | ${key} | Rent    | ❌ FAIL\n`;
                         }
@@ -538,9 +583,7 @@ function runLedgerAudit() {
     let status = errors.length === 0 ? "PASS" : "FAIL";
     let penalty = status === "FAIL" ? (errors.length * 5).toFixed(2) : "0.00";
     
-    // Add the detailedLog to the final report
     let report = `QC AUDIT REPORT [Ref: ${QC_REF}]\nDate: ${new Date().toLocaleDateString()}\nStatus: ${status}\nPenalty: $${penalty}\n\n${logicSummary}\n\n${detailedLog}\n------------------------------------------------\nSUMMARY FINDINGS:\n`;
-    
     if(status === 'FAIL') {
         report += errors.map(e => `- ${e}`).join('\n');
         report += `\n\n------------------------------------------------\nNEXT STEPS:\nPlease review findings on QC Dashboard.\n1. ACKNOWLEDGE: If you agree, correct ledger and click "Acknowledge".\n2. APPEAL: If you disagree, click "Appeal".`;
@@ -550,26 +593,112 @@ function runLedgerAudit() {
     document.getElementById('resultsCard').style.display = 'block';
     document.getElementById('finResultBox').innerHTML = status === 'PASS' ? `<div style="padding:10px; background:#d4edda; color:#155724;">✅ Audit Passed</div>` : `<div style="padding:10px; background:#f8d7da; color:#721c24;">❌ Audit Failed</div>`;
     
+    // RENT STAGNATION
     let isStagnant = false;
     let leaseStart = new Date(document.getElementById('leaseStartInput').value);
     if(leaseStart && new Date() - leaseStart > 31536000000) { 
         isStagnant = true; 
         document.getElementById('opsWorkflow').style.display='block';
-        document.getElementById('opsCommentTemplate').value = "Rent unchanged > 12 months. Please advise.";
+        const opsNote = `Observation: Rent unchanged > 12 months.\nAction: Please advise on Rent Increase Strategy.\n\nOPTIONS:\n1. Owner elected to keep rent the same\n2. Managed < 12 months (Increase Scheduled)\n3. Missed requirement / MTM (Will submit increase)\n4. Other\n\n*Please respond to this request within 1 business day so the QC Auditor can clear the Rent Stagnation Flag.*`;
+        document.getElementById('opsCommentTemplate').value = opsNote;
     }
 
     CURRENT_AUDIT = { qcRef: QC_REF, date: new Date().toISOString(), type: "Tenant Ledger Audit", prop: document.getElementById('propAddress').value, tenant: document.getElementById('scanTenant').value, task: document.getElementById('mainTaskNumber').value, assignee: document.getElementById('assignVA').value, auditor: document.getElementById('globalAuditor').value, status, penaltyAmt: parseFloat(penalty), report, isStagnant, opsStatus: isStagnant?'PENDING':'N/A', assigneeStatus: status==='FAIL' ? 'PENDING' : 'N/A' };
 }
 
-// --- WORKFLOW ---
+// --- WORKFLOW: SAVE & RE-RUN ---
 function saveAudit() {
+    if (IS_RERUN_MODE) {
+        alert(`Audit Updated! (Ref: ${QC_REF})`);
+    } else {
+        alert("New Audit Saved!");
+    }
+
     if(isConnected) db.collection("audits").doc(QC_REF).set(CURRENT_AUDIT);
     AUDIT_LOG[QC_REF] = CURRENT_AUDIT;
     localStorage.setItem('pw_qc_history', JSON.stringify(AUDIT_LOG));
-    renderHistoryRow(QC_REF, true);
+    
+    renderHistoryRow(QC_REF, !IS_RERUN_MODE);
     updateScorecard();
-    alert("Audit Saved Successfully!");
+    IS_RERUN_MODE = false;
     showTab('historyTab');
+}
+
+function loadAuditForRerun(id) {
+    const data = AUDIT_LOG[id];
+    if(!data) return alert("Audit not found");
+    if(!confirm(`Re-run Audit ${id}?`)) return;
+
+    showTab('auditTab');
+    IS_RERUN_MODE = true;
+    QC_REF = data.qcRef;
+    document.getElementById('qcRefDisplay').innerText = QC_REF + " (RE-RUN)";
+    document.getElementById('qcRefDisplay').style.color = "blue";
+
+    document.getElementById('scanTenant').value = data.tenant || "";
+    document.getElementById('propAddress').value = data.prop || "";
+    document.getElementById('mainTaskNumber').value = data.task || "";
+    document.getElementById('assignVA').value = data.assignee || "";
+    
+    document.getElementById('resultsCard').style.display = 'none';
+    document.getElementById('btnSave').innerText = "Update Existing Log";
+    alert("Data Loaded. Please re-upload documents and click 'Run'.");
+}
+
+// --- ROBUST PDF GENERATOR (FIXED) ---
+function genPDF(id) {
+    const data = AUDIT_LOG[id];
+    if(!data) return alert("Error: Audit data not found.");
+
+    // Fill PDF Template
+    document.getElementById('pdf-gen-date').innerText = (data.date || "").split('T')[0];
+    document.getElementById('pdf-qc-ref').innerText = data.qcRef || "-";
+    document.getElementById('pdf-header-status').innerText = data.status || "-";
+    document.getElementById('pdf-type').innerText = data.type || "Audit";
+    document.getElementById('pdf-auditor').innerText = data.auditor || "-";
+    document.getElementById('pdf-assignee').innerText = data.assignee || "-";
+    document.getElementById('pdf-task').innerText = data.task || "-";
+    document.getElementById('pdf-tenant').innerText = data.tenant || "-";
+    document.getElementById('pdf-property').innerText = data.prop || "-";
+    
+    // Fill Report Content (Fix Newlines)
+    if (data.report) {
+        document.getElementById('pdf-content').innerHTML = data.report.replace(/\n/g, '<br>');
+    } else {
+        document.getElementById('pdf-content').innerText = "No detail available.";
+    }
+    
+    // Ops Section
+    const ops = document.getElementById('pdf-ops-section');
+    if(data.isStagnant && data.opsStatus === "CLEARED" && data.resolution) {
+        ops.style.display = 'block';
+        document.getElementById('pdf-ops-ref').innerText = data.resolution.refId || "N/A";
+    } else { 
+        ops.style.display = 'none'; 
+    }
+
+    const img = document.getElementById('pdfLogo'); 
+    if(LOGO_DATA) { img.src = LOGO_DATA; img.style.display = 'block'; }
+    
+    // GENERATE
+    const el = document.getElementById('pdf-template');
+    el.style.display = 'block';
+    
+    const opt = {
+        margin: 0.25,
+        filename: `Audit_${data.qcRef}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+    };
+
+    html2pdf().set(opt).from(el).save().then(() => {
+        el.style.display = 'none';
+    }).catch(err => {
+        console.error(err);
+        alert("PDF Error. See console.");
+        el.style.display = 'none';
+    });
 }
 
 function renderHistoryRow(id, isNew) {
@@ -580,13 +709,15 @@ function renderHistoryRow(id, isNew) {
     if(data.assigneeStatus === 'PENDING') {
         assigneeBtn = `<button class="btn btn-outline" style="padding:2px 5px; font-size:0.7rem;" onclick="openActionModal('appeal', '${id}')">Appeal</button> <button class="btn btn-primary" style="padding:2px 5px; font-size:0.7rem;" onclick="openActionModal('ack', '${id}')">Ack</button>`;
     } else if (data.assigneeStatus === 'APPEALED') {
-        assigneeBtn = `<span class="badge bg-warn">APPEALED</span> <button class="btn btn-danger" style="padding:2px 5px; font-size:0.6rem;" onclick="alert('Notifying EPM...')">Notify EPM</button>`;
+        assigneeBtn = `<span class="badge bg-warn">APPEALED</span>`;
     } else if (data.assigneeStatus === 'ACKNOWLEDGED') {
-        assigneeBtn = `<span class="badge bg-blue">READY</span>`;
+        assigneeBtn = `<span class="badge bg-blue">READY FOR RE-RUN</span>`;
     } else { assigneeBtn = '<span class="badge" style="background:#eee;">N/A</span>'; }
 
-    let tools = `<button class="btn btn-outline" style="padding:2px 5px;" onclick="genPDF('${id}')"><i class="fas fa-file-pdf"></i></button> <button class="btn btn-danger" style="padding:2px 5px;" onclick="deleteAudit('${id}')"><i class="fas fa-trash"></i></button>`;
-    if(data.assigneeStatus === 'ACKNOWLEDGED') tools += ` <button class="btn btn-primary" style="padding:2px 5px;" onclick="alert('Resetting Intake for Re-Run'); showTab('auditTab');"><i class="fas fa-sync"></i></button>`;
+    // TOOLS COLUMN (PDF + RE-RUN + DELETE)
+    let tools = `<button class="btn btn-outline" style="padding:2px 5px;" title="PDF" onclick="genPDF('${id}')"><i class="fas fa-file-pdf"></i></button> `;
+    tools += `<button class="btn btn-primary" style="padding:2px 5px;" title="Re-Run" onclick="loadAuditForRerun('${id}')"><i class="fas fa-sync"></i></button> `;
+    tools += `<button class="btn btn-danger" style="padding:2px 5px;" title="Delete" onclick="deleteAudit('${id}')"><i class="fas fa-trash"></i></button>`;
 
     let statusIcon = data.status==='PASS' ? (data.isStagnant ? '✅ <i class="fas fa-exclamation-triangle icon-warning"></i>' : '✅') : '❌';
     let html = `<td>${data.date.split('T')[0]}</td><td>${data.auditor||'-'}</td><td>${data.type||'-'}</td><td>${data.prop||'-'}</td><td>${statusIcon} ${data.status}</td><td>$${data.penaltyAmt}</td><td>${opsBadge}</td><td>${assigneeBtn}</td><td>${tools}</td>`;
@@ -595,70 +726,37 @@ function renderHistoryRow(id, isNew) {
     else { let r = document.getElementById(`row-${id}`); if(r) r.innerHTML=html; else { let nr = document.getElementById('historyBody').insertRow(-1); nr.id=`row-${id}`; nr.innerHTML=html; } }
 }
 
-function openActionModal(type, id) {
-    EDITING_ID = id; ACTION_TYPE = type;
-    document.getElementById('modalTitle').innerText = type === 'appeal' ? 'Formal Appeal' : 'Acknowledge Findings';
-    
-    let appealText = `I am writing to formally appeal the findings of the recent audit conducted on ${new Date().toLocaleDateString()}. I respect the audit process and understand its importance, but I believe some of the conclusions may not fully reflect the facts.\n\nReason for Appeal:\n[Briefly explain the specific discrepancy. State clearly what the audit found versus what your records show.]\n\nSupporting Proof (Provide at least one):\n\nEvidence Type A: Email Confirmation\nSubject Line: [Paste exact email subject line]\nDate Sent/Received: [MM/DD/YYYY]\nSender/Recipient: [Name]\n\nEvidence Type B: System Record\nBuildium Task #: [Enter Task Number]\nTransaction ID: [Enter ID Number]\n\nEvidence Type C: Policy Reference\nSOP Name & Section: [e.g., "SOP 2.1 - Rent Collection"]\nSpecific Clause: [Briefly quote or reference the rule applied]`;
-    
-    let ackText = `I, [Assigned Person Name], acknowledge receipt of the audit report and its findings.\nI confirm that the ledger has been corrected based on these findings.\n\nDate: ${new Date().toLocaleString()}`;
-    
-    document.getElementById('modalComment').value = type === 'appeal' ? appealText : ackText;
-    document.getElementById('actionModal').style.display = 'flex';
-}
-
-function confirmAction() {
-    let notes = document.getElementById('modalComment').value;
-    if(ACTION_TYPE === 'appeal' && !notes) return alert("Please enter a reason.");
-    
-    if(AUDIT_LOG[EDITING_ID]) {
-        AUDIT_LOG[EDITING_ID].assigneeStatus = ACTION_TYPE === 'appeal' ? 'APPEALED' : 'ACKNOWLEDGED';
-        localStorage.setItem('pw_qc_history', JSON.stringify(AUDIT_LOG));
-        if(isConnected) db.collection("audits").doc(EDITING_ID).update({ assigneeStatus: AUDIT_LOG[EDITING_ID].assigneeStatus });
-        renderHistoryRow(EDITING_ID, false);
-        
-        if(ACTION_TYPE === 'ack') {
-            alert("Audit Acknowledged! Please click the Re-Run button to verify the corrections.");
-        }
-    }
-    closeModal();
-}
-
-function genPDF(id) {
-    let data = AUDIT_LOG[id];
-    // Fill Hidden Template
-    document.getElementById('pdf-gen-date').innerText = data.date.split('T')[0];
-    document.getElementById('pdf-qc-ref').innerText = data.qcRef;
-    document.getElementById('pdf-header-status').innerText = data.status;
-    document.getElementById('pdf-content').innerText = data.report;
-    document.getElementById('pdf-type').innerText = data.type || '-';
-    document.getElementById('pdf-auditor').innerText = data.auditor || '-';
-    document.getElementById('pdf-property').innerText = data.prop || '-';
-    document.getElementById('pdf-tenant').innerText = data.tenant || '-';
-    document.getElementById('pdf-task').innerText = data.task || '-';
-    document.getElementById('pdf-assignee').innerText = data.assignee || '-';
-    
-    if(data.opsStatus === 'CLEARED') {
-        document.getElementById('pdf-ops-section').style.display = 'block';
-        document.getElementById('pdf-ops-ref').innerText = data.resolution?.refId || '-';
-    } else { document.getElementById('pdf-ops-section').style.display = 'none'; }
-
-    const img = document.getElementById('pdfLogo'); if(LOGO_DATA) { img.src=LOGO_DATA; img.style.display='block'; }
-    
-    // VISIBILITY TOGGLE FIX
-    const el = document.getElementById('pdf-template');
-    el.style.display = 'block';
-    html2pdf().set({ margin: 0.25, filename: `Audit_${data.qcRef}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' } }).from(el).save().then(() => { el.style.display = 'none'; });
-}
-
 // GENERIC UTILS
 function toggleRentChange() { let v = document.getElementById("rentChangeToggle").value; document.getElementById('logicConstant').style.display = v==='no'?'block':'none'; document.getElementById('logicChanged').style.display = v==='yes'?'grid':'none'; }
 function toggleAuditMode() { let m = document.getElementById('auditTypeSelect').value; document.getElementById('ledgerAuditSection').style.display=m==='ledger'?'block':'none'; document.getElementById('mgmtAuditSection').style.display=m==='mgmt'?'block':'none'; document.getElementById('resultsCard').style.display='none'; }
 function toggleMgmtRent(val) { document.getElementById('mgmtRentSingle').style.display = val==='no'?'block':'none'; document.getElementById('mgmtRentMulti').style.display = val==='yes'?'grid':'none'; }
 function openUpdateModal(id) { EDITING_ID = id; document.getElementById('updateModal').style.display='flex'; }
 function closeModal() { document.getElementById('updateModal').style.display='none'; document.getElementById('actionModal').style.display='none'; }
-function confirmUpdate() { if(AUDIT_LOG[EDITING_ID]) { AUDIT_LOG[EDITING_ID].opsStatus = 'CLEARED'; renderHistoryRow(EDITING_ID, false); } closeModal(); }
-function deleteAudit(id) { if(confirm("Delete?")) { delete AUDIT_LOG[id]; localStorage.setItem('pw_qc_history', JSON.stringify(AUDIT_LOG)); document.getElementById(`row-${id}`).remove(); updateScorecard(); } }
+function confirmUpdate() { 
+    if(AUDIT_LOG[EDITING_ID]) { 
+        AUDIT_LOG[EDITING_ID].opsStatus = 'CLEARED'; 
+        const reason = document.getElementById('modalOpsReason').value;
+        const ref = document.getElementById('modalRefId').value;
+        if(reason && ref) AUDIT_LOG[EDITING_ID].resolution = { reason, refId: ref };
+        if(isConnected) db.collection("audits").doc(EDITING_ID).update({ opsStatus: 'CLEARED', resolution: AUDIT_LOG[EDITING_ID].resolution });
+        renderHistoryRow(EDITING_ID, false); 
+    } 
+    closeModal(); 
+}
+function openActionModal(type, id) {
+    EDITING_ID = id; ACTION_TYPE = type;
+    document.getElementById('modalTitle').innerText = type === 'appeal' ? 'Formal Appeal' : 'Acknowledge Findings';
+    document.getElementById('actionModal').style.display = 'flex';
+}
+function confirmAction() {
+    if(AUDIT_LOG[EDITING_ID]) {
+        AUDIT_LOG[EDITING_ID].assigneeStatus = ACTION_TYPE === 'appeal' ? 'APPEALED' : 'ACKNOWLEDGED';
+        if(isConnected) db.collection("audits").doc(EDITING_ID).update({ assigneeStatus: AUDIT_LOG[EDITING_ID].assigneeStatus });
+        renderHistoryRow(EDITING_ID, false);
+    }
+    closeModal();
+}
+function deleteAudit(id) { if(confirm("Delete?")) { delete AUDIT_LOG[id]; localStorage.setItem('pw_qc_history', JSON.stringify(AUDIT_LOG)); document.getElementById(`row-${id}`).remove(); updateScorecard(); if(isConnected) db.collection("audits").doc(id).delete(); } }
 function copyFullReport() { navigator.clipboard.writeText(document.getElementById('fullReportOutput').value); alert("Copied!"); }
 function copyTatEmail() { navigator.clipboard.writeText(document.getElementById('tatEmailTemplate').value); alert("Copied!"); }
 function showTab(id) { ['auditTab','historyTab','scoreTab'].forEach(t => document.getElementById(t).style.display = t===id?'block':'none'); }
@@ -674,7 +772,6 @@ function updateScorecard() {
     document.getElementById('scoreTotal').innerText = total; 
     document.getElementById('scorePass').innerText = rate + "%"; 
     document.getElementById('scorePenalty').innerText = "$" + penalties.toFixed(2);
-    document.getElementById('feedbackText').innerHTML = (rate >= 90) ? "🌟 Excellent! High Quality Audit." : (rate >= 75 ? "✅ Good Job. Standard Met." : "⚠️ Needs Improvement. Review Process.");
 }
 function checkTAT() { /* TAT Logic */ }
 </script>
