@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -519,7 +518,7 @@ function processFile(input, type) {
     }
 }
 
-// --- TENANT LEDGER AUDIT ---
+// --- TENANT LEDGER AUDIT (FIXED: DETAILED RENT LOG + CUSTOM SCHEDULE + WAIVED FEES) ---
 function runLedgerAudit() {
     if(!FILES.csv) return alert("Upload Tenant Ledger CSV (Slot 1)");
     
@@ -547,7 +546,6 @@ function runLedgerAudit() {
     let detailedLog = "DETAILED VERIFICATION LOG:\nDate       | Type       | Chrg    | Exp.    | Status\n------------------------------------------------------\n";
 
     LEDGER_CSV.forEach(row => {
-        // DATE LOGIC (COL A vs COL T)
         let dateVal = null;
         let potentialDateA = row[0];  
         let potentialDateT = row[19]; 
@@ -616,10 +614,14 @@ function runLedgerAudit() {
         if (rentMode === 'no') expected = rJan;
         else if (rentMode === 'yes') expected = (item.m < splitMonth) ? rJan : rDec;
         else expected = parseFloat(document.getElementById('r'+item.m).value) || 0; 
-
+        
+        let status = "PASS";
         if(Math.abs(item.val - expected) > 1.0) { 
+            status = "FAIL";
             errors.push(`Mismatch ${k}: Charged $${item.val.toFixed(2)} | Expected $${expected.toFixed(2)}`); 
         }
+        let stIcon = status === 'PASS' ? "✅" : "❌";
+        detailedLog += `${k.padEnd(10)} | Rent       | $${item.val.toFixed(2).padEnd(6)} | $${expected.toFixed(2).padEnd(6)} | ${stIcon} ${status}\n`;
     });
 
     if(lateFeesChecked === 0) detailedLog += "NOTE: No 'Late Fee' line items found to audit.\n";
@@ -683,7 +685,7 @@ function runMgmtAudit() {
     const taskNum = document.getElementById('mgmtTaskNum').value; 
     const auditorName = document.getElementById('globalAuditor').value;
     
-    // SAFE PROPERTY NUMBER EXTRACTION
+    // SAFE PROPERTY NUMBER EXTRACTION (Prevent "0" default bug)
     let propMatch = prop.match(/\d+/);
     let propNumber = propMatch ? propMatch[0] : "INVALID_PROP_NUM"; 
 
