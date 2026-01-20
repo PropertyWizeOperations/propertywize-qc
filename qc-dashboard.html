@@ -672,7 +672,7 @@ function runLedgerAudit() {
     CURRENT_AUDIT = { qcRef: QC_REF, date: new Date().toISOString(), type: "Tenant Ledger Audit", prop: document.getElementById('propAddress').value, tenant: document.getElementById('scanTenant').value, task: document.getElementById('mainTaskNumber').value, assignee: document.getElementById('assignVA').value, auditor: document.getElementById('globalAuditor').value, status, penaltyAmt: parseFloat(penalty), report, isStagnant, opsStatus: isStagnant?'PENDING':'N/A', assigneeStatus: status==='FAIL' ? 'PENDING' : 'N/A' };
 }
 
-// --- MANAGEMENT AUDIT (FIXED: LEASING BLOCKER + FUTURE DATE IGNORE + DATE RANGE SCANNER + TABLE FILL + SORTING + PRORATION) ---
+// --- MANAGEMENT AUDIT (FIXED: START DATE BUCKET + NO HEADER BUG + VACANCY/LEASING LOGIC + FUTURE DATE FIX) ---
 function runMgmtAudit() {
     if(!FILES.mgmtCsv) return alert("Upload Owner Statement CSV (Slot 2)");
     
@@ -682,6 +682,10 @@ function runMgmtAudit() {
     const taskNum = document.getElementById('mgmtTaskNum').value; 
     const auditorName = document.getElementById('globalAuditor').value;
     
+    // SAFE PROPERTY NUMBER EXTRACTION
+    let propMatch = prop.match(/\d+/);
+    let propNumber = propMatch ? propMatch[0] : "INVALID_PROP_NUM"; 
+
     const mode = document.querySelector('input[name="mgmtRentCheck"]:checked').value;
     
     let rJan, rDec, splitMonth;
@@ -709,71 +713,64 @@ function runMgmtAudit() {
     let monthlyData = {}; 
     for(let i=1; i<=12; i++) monthlyData[i] = { found: false, actual: 0, date: null };
 
-    // FIX: SORT CSV BY DATE CHRONOLOGICALLY
-    MGMT_CSV.sort((a,b) => new Date(a[2]) - new Date(b[2]));
+    // FIX: SORT CSV BY DATE CHRONOLOGICALLY (Skip Header if present)
+    let cleanCsv = MGMT_CSV.filter(r => !isNaN(Date.parse(r[2]))); // Filter valid dates
+    cleanCsv.sort((a,b) => new Date(a[2]) - new Date(b[2]));
 
-    // DETECT AUDIT YEAR (Use most frequent year in CSV) AND LATEST DATE
+    // DETECT AUDIT YEAR (Use most frequent year in CSV)
     let yearCounts = {};
-    let latestCsvDate = new Date(0); // Epoch
+    let latestCsvDate = new Date(0); 
 
-    MGMT_CSV.forEach(row => {
+    cleanCsv.forEach(row => {
         let d = new Date(row[2]);
-        if(!isNaN(d)) { 
-            let y = d.getFullYear(); 
-            yearCounts[y] = (yearCounts[y] || 0) + 1; 
-            if(d > latestCsvDate) latestCsvDate = d;
-        }
+        let y = d.getFullYear(); 
+        yearCounts[y] = (yearCounts[y] || 0) + 1; 
+        if(d > latestCsvDate) latestCsvDate = d;
     });
-    let auditYear = parseInt(Object.keys(yearCounts).reduce((a, b) => yearCounts[a] > yearCounts[b] ? a : b));
+    
+    // SAFE YEAR DETECTION (Defaults to current year if fails)
+    let auditYear = new Date().getFullYear();
+    if (Object.keys(yearCounts).length > 0) {
+        auditYear = parseInt(Object.keys(yearCounts).reduce((a, b) => yearCounts[a] > yearCounts[b] ? a : b));
+    }
 
-    MGMT_CSV.forEach(row => {
+    cleanCsv.forEach(row => {
         let rowStr = row.join(" ").toLowerCase();
-        let memo = (row[11] || "").toLowerCase(); // Check Posting Memo
-
-        // FIX: EXCLUDE LEASING/PLACEMENT FEES (Expanded List)
+        
+        // FIX: BLOCK LEASING/PLACEMENT FEES
         if((rowStr.includes("management fees") || rowStr.includes("management fee")) && !rowStr.includes("leasing") && !rowStr.includes("placement") && !rowStr.includes("finder") && !rowStr.includes("marketing") && !rowStr.includes("letting") && !rowStr.includes("commission")) {
             
             let dateVal = row[2]; // Default Date (Col C)
             let d = new Date(dateVal);
 
-            // FIX: GHOST DEC CHARGE FIX (Ignore old year)
-            // If date is Jan/Feb but desc says "Dec", map to PREV YEAR
-            // If date is Dec 2024, ignore it
-            
+            // FIX: SMART DATE LOGIC (Use START Date for Month Bucket)
+            // Example: 1/11/2025 - 2/10/2025 -> Jan 11 -> January
             let rangeMatch = rowStr.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})\s*-\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/);
-            let monthNameMatch = rowStr.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/);
-
-            if (rangeMatch) {
-                d = new Date(rangeMatch[1]);
-            } else if (monthNameMatch) {
-                const months = {jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11};
-                let detectedMonth = months[monthNameMatch[1]];
-                
-                // CRITICAL FIX: If check date is Jan 2025 and desc is "Dec", it means Dec 2024.
-                // We must use auditYear - 1 if detectedMonth > checkDateMonth
-                if (detectedMonth > d.getMonth() && d.getFullYear() === auditYear) {
-                    d = new Date(auditYear - 1, detectedMonth, 1);
-                } else {
-                    d = new Date(auditYear, detectedMonth, 1);
-                }
-            }
             
-            // STRICT YEAR CHECK: If after adjustment, year is not Audit Year, SKIP IT
+            if (rangeMatch) {
+                d = new Date(rangeMatch[1]); // Use START Date
+            } 
+            
+            // STRICT YEAR CHECK
             if (d.getFullYear() !== auditYear) return;
 
             if(!isNaN(d)) {
                 let m = d.getMonth() + 1;
                 monthlyData[m].found = true;
                 
-                let valN = parseFloat((row[13] || "").toString().replace(/[$,]/g,'')); 
-                if(!isNaN(valN) && valN !== 0) monthlyData[m].actual += Math.abs(valN);
-                else {
-                    for(let i=0; i<row.length; i++) {
-                        let val = parseFloat((row[i] || "").toString().replace(/[$,]/g,''));
-                        if(!isNaN(val) && val !== 0 && Math.abs(val) < 5000) { 
-                             monthlyData[m].actual += Math.abs(val);
-                             break;
-                        }
+                let rawVal = (row[13] || "").toString().replace(/[$,]/g,'');
+                
+                // ANTI-ADDRESS LOGIC
+                if (rawVal.includes(propNumber) || /[a-zA-Z]/.test(rawVal)) {
+                    // Skip bad val
+                } else {
+                    let valN = parseFloat(rawVal); 
+                    // SAFETY CAP
+                    let safeCap = Math.max(turnRentA || 0, turnRentB || 0, rJan || 0, rDec || 0) * 1.5; 
+                    if(safeCap === 0) safeCap = 5000; 
+
+                    if(!isNaN(valN) && valN !== 0 && Math.abs(valN) < safeCap) {
+                        monthlyData[m].actual += Math.abs(valN);
                     }
                 }
             }
@@ -806,8 +803,7 @@ function runMgmtAudit() {
         let status = "PASS";
         let note = "";
         
-        // CHECK IF MONTH IS IN FUTURE (No Data yet)
-        let thisMonthDate = new Date(auditYear, m-1, 28); // End of month approx
+        let thisMonthDate = new Date(auditYear, m-1, 28); 
         let isFuture = thisMonthDate > latestCsvDate;
 
         if (isFuture && actualFee === 0) {
@@ -815,7 +811,6 @@ function runMgmtAudit() {
              note = "(No Data)";
         } 
         else if(Math.abs(actualFee - expectedFee) > 0.05) {
-            // FIX: PRORATION LOGIC
             if (mode === 'turnover' && isTransitionMonth && actualFee > 0 && actualFee < expectedFee) {
                 status = "PASS";
                 note = "(Prorated)";
@@ -827,7 +822,6 @@ function runMgmtAudit() {
 
         let monthName = new Date(auditYear, m-1, 1).toLocaleString('default', { month: 'short' });
         let stIcon = status === 'PASS' ? "✅" : (status === 'PENDING' ? "⏳" : "❌");
-        let color = status === 'PASS' ? "" : (status === 'PENDING' ? "color:gray;" : "");
         reportRows += `${monthName.padEnd(12)}| $${currentRent.toFixed(2).padEnd(8)}| $${expectedFee.toFixed(2).padEnd(8)}| $${actualFee.toFixed(2).padEnd(8)}| ${stIcon} ${status} ${note}\n`;
     }
 
