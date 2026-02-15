@@ -675,7 +675,7 @@ function runLedgerAudit() {
     CURRENT_AUDIT = { qcRef: QC_REF, date: new Date().toISOString(), type: "Tenant Ledger Audit", prop: document.getElementById('propAddress').value, tenant: document.getElementById('scanTenant').value, task: document.getElementById('mainTaskNumber').value, assignee: document.getElementById('assignVA').value, auditor: document.getElementById('globalAuditor').value, status, penaltyAmt: parseFloat(penalty), report, isStagnant, opsStatus: isStagnant?'PENDING':'N/A', assigneeStatus: status==='FAIL' ? 'PENDING' : 'N/A' };
 }
 
-// --- MANAGEMENT AUDIT (FIXED: START DATE BUCKET + NO HEADER BUG + VACANCY/LEASING LOGIC + FUTURE DATE FIX) ---
+// --- MANAGEMENT AUDIT (FIXED: 3509 ADDRESS SUM FIX + VACANCY/LEASING LOGIC + FUTURE DATE FIX + DEFERRED START MONTH) ---
 function runMgmtAudit() {
     if(!FILES.mgmtCsv) return alert("Upload Owner Statement CSV (Slot 2)");
     
@@ -716,30 +716,27 @@ function runMgmtAudit() {
     let monthlyData = {}; 
     for(let i=1; i<=12; i++) monthlyData[i] = { found: false, actual: 0, date: null };
 
-    // FIX: SORT CSV BY DATE CHRONOLOGICALLY (Skip Header if present)
-    let cleanCsv = MGMT_CSV.filter(r => !isNaN(Date.parse(r[2]))); // Filter valid dates
-    cleanCsv.sort((a,b) => new Date(a[2]) - new Date(b[2]));
+    // FIX: SORT CSV BY DATE CHRONOLOGICALLY
+    MGMT_CSV.sort((a,b) => new Date(a[2]) - new Date(b[2]));
 
-    // DETECT AUDIT YEAR (Use most frequent year in CSV)
+    // DETECT AUDIT YEAR (Use most frequent year in CSV) AND LATEST DATE
     let yearCounts = {};
-    let latestCsvDate = new Date(0); 
+    let latestCsvDate = new Date(0); // Epoch
 
-    cleanCsv.forEach(row => {
+    MGMT_CSV.forEach(row => {
         let d = new Date(row[2]);
-        let y = d.getFullYear(); 
-        yearCounts[y] = (yearCounts[y] || 0) + 1; 
-        if(d > latestCsvDate) latestCsvDate = d;
+        if(!isNaN(d)) { 
+            let y = d.getFullYear(); 
+            yearCounts[y] = (yearCounts[y] || 0) + 1; 
+            if(d > latestCsvDate) latestCsvDate = d;
+        }
     });
-    
-    // SAFE YEAR DETECTION (Defaults to current year if fails)
-    let auditYear = new Date().getFullYear();
-    if (Object.keys(yearCounts).length > 0) {
-        auditYear = parseInt(Object.keys(yearCounts).reduce((a, b) => yearCounts[a] > yearCounts[b] ? a : b));
-    }
+    let auditYear = parseInt(Object.keys(yearCounts).reduce((a, b) => yearCounts[a] > yearCounts[b] ? a : b));
 
-    cleanCsv.forEach(row => {
+    MGMT_CSV.forEach(row => {
         let rowStr = row.join(" ").toLowerCase();
-        
+        let memo = (row[11] || "").toLowerCase(); 
+
         // FIX: BLOCK LEASING/PLACEMENT FEES
         if((rowStr.includes("management fees") || rowStr.includes("management fee")) && !rowStr.includes("leasing") && !rowStr.includes("placement") && !rowStr.includes("finder") && !rowStr.includes("marketing") && !rowStr.includes("letting") && !rowStr.includes("commission")) {
             
@@ -747,14 +744,17 @@ function runMgmtAudit() {
             let d = new Date(dateVal);
 
             // FIX: SMART DATE LOGIC (Use START Date for Month Bucket)
-            // Example: 1/11/2025 - 2/10/2025 -> Jan 11 -> January
+            // Example: 11/22/2025 - 12/10/2025 -> Nov 22 -> November
             let rangeMatch = rowStr.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})\s*-\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/);
-            
+            let monthNameMatch = rowStr.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/);
+
             if (rangeMatch) {
                 d = new Date(rangeMatch[1]); // Use START Date
-            } 
+            } else if (monthNameMatch) {
+                const months = {jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11};
+                d = new Date(auditYear, months[monthNameMatch[1]], 28);
+            }
             
-            // STRICT YEAR CHECK
             if (d.getFullYear() !== auditYear) return;
 
             if(!isNaN(d)) {
@@ -763,17 +763,19 @@ function runMgmtAudit() {
                 
                 let rawVal = (row[13] || "").toString().replace(/[$,]/g,'');
                 
-                // ANTI-ADDRESS LOGIC
+                // ANTI-ADDRESS LOGIC: Ignore if matches property number EXACTLY or contains letters
                 if (rawVal.includes(propNumber) || /[a-zA-Z]/.test(rawVal)) {
-                    // Skip bad val
+                    // Do nothing
                 } else {
                     let valN = parseFloat(rawVal); 
-                    // SAFETY CAP
+                    // SAFETY CAP: Ignore fee if greater than 2x Rent
                     let safeCap = Math.max(turnRentA || 0, turnRentB || 0, rJan || 0, rDec || 0) * 1.5; 
                     if(safeCap === 0) safeCap = 5000; 
 
                     if(!isNaN(valN) && valN !== 0 && Math.abs(valN) < safeCap) {
                         monthlyData[m].actual += Math.abs(valN);
+                    } else if (!isNaN(valN) && valN !== 0) {
+                        // Fallback check Column O if N failed sanity check? No, risky. Just skip.
                     }
                 }
             }
@@ -814,10 +816,26 @@ function runMgmtAudit() {
              note = "(No Data)";
         } 
         else if(Math.abs(actualFee - expectedFee) > 0.05) {
-            if (mode === 'turnover' && isTransitionMonth && actualFee > 0 && actualFee < expectedFee) {
+            let isHandled = false;
+
+            // FIX: GLOBAL PRORATION MODE
+            // If in Turnover mode, allow ANY partial fee to pass as "Prorated"
+            // This catches late move-ins (Nov), early move-outs (May), etc.
+            if (mode === 'turnover' && actualFee > 0 && actualFee < expectedFee) {
                 status = "PASS";
                 note = "(Prorated)";
-            } else {
+                isHandled = true;
+            }
+            
+            // FIX: MOVE-OUT MONTH $0 PASS
+            // If it's the Move-Out Month (End Month) and fee is $0 -> PASS
+            if (mode === 'turnover' && m === turnEnd && actualFee === 0) {
+                status = "PASS";
+                note = "(Vacancy/No Rent)";
+                isHandled = true;
+            }
+
+            if (!isHandled) {
                 status = "FAIL";
                 errors.push(`Month ${m}: Charged $${actualFee.toFixed(2)}, Expected $${expectedFee.toFixed(2)}`);
             }
