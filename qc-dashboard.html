@@ -362,6 +362,7 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
                             <label><input type="radio" name="mgmtRentCheck" value="no" checked onchange="toggleMgmtRent('no')"> Constant Rent</label>
                             <label><input type="radio" name="mgmtRentCheck" value="yes" onchange="toggleMgmtRent('yes')"> Rent Changed (Same Tenant)</label>
                             <label><input type="radio" name="mgmtRentCheck" value="turnover" onchange="toggleMgmtRent('turnover')"> Turnover (Different Tenants)</label>
+                            <label><input type="radio" name="mgmtRentCheck" value="multi" onchange="toggleMgmtRent('multi')"> Multi-Family (Rent Roll)</label>
                         </div>
 
                         <div id="mgmtRentSingle" style="margin-top:10px;"><label>Current Rent ($)</label><input type="number" id="mgmtRentA"></div>
@@ -397,6 +398,17 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
                                 </div>
                             </div>
                         </div>
+
+                        <div id="mgmtRentMultiFamily" style="display:none; margin-top:10px; background:#e3f2fd; padding:15px; border-radius:6px; border:1px solid #90caf9;">
+                            <p style="font-weight:bold; color:#1565c0; margin-bottom:10px;"><i class="fas fa-building"></i> Upload Rent Roll (Up to 300 Units)</p>
+                            <div class="drop-zone" onclick="document.getElementById('rentRollFile').click()" style="background:white;">
+                                <div><i class="fas fa-file-csv"></i> Click to Upload Rent Roll CSV</div>
+                                <input type="file" id="rentRollFile" accept=".csv" style="display:none" onchange="processFile(this, 'rentRoll')">
+                                <div id="rentRollStatus" style="color:var(--accent); font-size:0.8rem; margin-top:5px;"></div>
+                            </div>
+                            <p style="font-size:0.75rem; color:#666; margin-top:10px;">The tool will check if the monthly charged amount matches <strong>(Sum of Active Units Rent * Fee %)</strong>.</p>
+                        </div>
+
                     </div>
                     <div style="margin-top:20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                         <div class="drop-zone" onclick="document.getElementById('mgmtAgreementFile').click()"><div><strong>Mgmt Agreement (PDF)</strong></div><input type="file" id="mgmtAgreementFile" accept=".pdf" style="display:none" onchange="processFile(this, 'mgmtPdf')"><div id="mgmtPdfStatus" style="color:var(--accent);"></div></div>
@@ -448,8 +460,8 @@ let db = null, isConnected = false;
 try { const app = firebase.initializeApp(firebaseConfig); db = firebase.firestore(); isConnected = true; } catch (e) { console.error("Firebase Error", e); }
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
-let LEDGER_CSV = [], MGMT_CSV = [], PDF_TEXT = "";
-let FILES = { csv: false, ledgerPdf: false, lease: false, mgmtCsv: false, mgmtPdf: false };
+let LEDGER_CSV = [], MGMT_CSV = [], RENT_ROLL_CSV = [], PDF_TEXT = "";
+let FILES = { csv: false, ledgerPdf: false, lease: false, mgmtCsv: false, mgmtPdf: false, rentRoll: false };
 let CURRENT_AUDIT = {}, AUDIT_LOG = {}, QC_REF = "QC-" + Math.floor(100000 + Math.random() * 900000);
 let LOGO_DATA = null, EDITING_ID = null, ACTION_TYPE = "";
 let IS_RERUN_MODE = false;
@@ -465,6 +477,7 @@ function initApp() {
         LOGO_DATA = localStorage.getItem('pw_qc_logo'); 
         document.getElementById('logoPreview').src=LOGO_DATA; 
         document.getElementById('logoPreview').style.display='block'; 
+        document.getElementById('logoText').style.display='none'; // HIDE TEXT IF LOGO EXISTS
     }
     if(localStorage.getItem('pw_qc_auditor')) document.getElementById('globalAuditor').value = localStorage.getItem('pw_qc_auditor');
     document.getElementById('qcRefDisplay').innerText = QC_REF;
@@ -493,6 +506,8 @@ function processFile(input, type) {
         Papa.parse(input.files[0], { header: false, skipEmptyLines: true, complete: r => { LEDGER_CSV = r.data; document.getElementById('stmtStatus').innerText = "✅ Loaded"; FILES.csv = true; }});
     } else if(type === 'mgmtCsv') {
         Papa.parse(input.files[0], { header: false, skipEmptyLines: true, complete: r => { MGMT_CSV = r.data; document.getElementById('mgmtCsvStatus').innerText = "✅ Loaded"; FILES.mgmtCsv = true; }});
+    } else if(type === 'rentRoll') {
+        Papa.parse(input.files[0], { header: true, skipEmptyLines: true, complete: r => { RENT_ROLL_CSV = r.data; document.getElementById('rentRollStatus').innerText = "✅ Rent Roll Loaded"; FILES.rentRoll = true; }});
     } else if (type === 'mgmtPdf') {
         document.getElementById('mgmtPdfStatus').innerText = "✅ Loaded"; 
         FILES.mgmtPdf = true; 
@@ -675,7 +690,7 @@ function runLedgerAudit() {
     CURRENT_AUDIT = { qcRef: QC_REF, date: new Date().toISOString(), type: "Tenant Ledger Audit", prop: document.getElementById('propAddress').value, tenant: document.getElementById('scanTenant').value, task: document.getElementById('mainTaskNumber').value, assignee: document.getElementById('assignVA').value, auditor: document.getElementById('globalAuditor').value, status, penaltyAmt: parseFloat(penalty), report, isStagnant, opsStatus: isStagnant?'PENDING':'N/A', assigneeStatus: status==='FAIL' ? 'PENDING' : 'N/A' };
 }
 
-// --- MANAGEMENT AUDIT (FIXED: 3509 ADDRESS SUM FIX + VACANCY/LEASING LOGIC + FUTURE DATE FIX + DEFERRED START MONTH) ---
+// --- MANAGEMENT AUDIT (FIXED: MULTI-OWNER DUPLICATION BUG + HEADER FIX + DYNAMIC RENT CALCULATION) ---
 function runMgmtAudit() {
     if(!FILES.mgmtCsv) return alert("Upload Owner Statement CSV (Slot 2)");
     
@@ -685,7 +700,7 @@ function runMgmtAudit() {
     const taskNum = document.getElementById('mgmtTaskNum').value; 
     const auditorName = document.getElementById('globalAuditor').value;
     
-    // SAFE PROPERTY NUMBER EXTRACTION (Prevent "0" default bug)
+    // SAFE PROPERTY NUMBER EXTRACTION
     let propMatch = prop.match(/\d+/);
     let propNumber = propMatch ? propMatch[0] : "INVALID_PROP_NUM"; 
 
@@ -693,8 +708,42 @@ function runMgmtAudit() {
     
     let rJan, rDec, splitMonth;
     let turnRentA, turnEnd, turnRentB, turnStart;
+    let multiFamilyRent = 0;
+    let multiFamilyFeeTotal = 0;
 
-    if (mode === 'no') {
+    // --- MODE SELECTION ---
+    if (mode === 'multi') {
+        if (!FILES.rentRoll) return alert("Please upload the Rent Roll CSV for Multi-Family audit.");
+        
+        let activeUnits = {};
+        let propFilter = prop.trim().toLowerCase();
+
+        RENT_ROLL_CSV.forEach(r => {
+            let rProp = (r['PropertyName'] || "").toLowerCase();
+            if (!rProp.includes(propFilter) && propFilter.length > 0) return; 
+
+            let uNum = r['Number'] || r['Unit'] || "Main";
+            let rDate = new Date(r['Start'] || r['LeaseStartRaw'] || "1900-01-01");
+            
+            if (!activeUnits[uNum] || rDate > activeUnits[uNum].date) {
+                let val = parseFloat((r['Rent'] || r['Current Rent'] || r['Amount'] || r['Market Rent'] || "0").replace(/[$,]/g,''));
+                if (!isNaN(val)) {
+                    activeUnits[uNum] = { date: rDate, rent: val };
+                }
+            }
+        });
+
+        // 5. Sum Rent & Fee (Per Unit Logic)
+        Object.values(activeUnits).forEach(u => {
+            multiFamilyRent += u.rent;
+            // CRITICAL FIX: Apply Max(Percentage, Min) PER UNIT
+            multiFamilyFeeTotal += Math.max(u.rent * feePct, minFee);
+        });
+
+        if (multiFamilyRent === 0) return alert("No active rent found for " + prop + " in Rent Roll.");
+        
+        rJan = multiFamilyRent; // Display Total Rent
+    } else if (mode === 'no') {
         rJan = parseFloat(document.getElementById('mgmtRentA').value);
         if(isNaN(rJan)) return alert("Enter Rent Amount");
     } else if (mode === 'yes') {
@@ -714,36 +763,47 @@ function runMgmtAudit() {
 
     let errors = [];
     let monthlyData = {}; 
-    for(let i=1; i<=12; i++) monthlyData[i] = { found: false, actual: 0, date: null };
+    for(let i=1; i<=12; i++) monthlyData[i] = { found: false, actual: 0, date: null, fees: [] };
 
-    // FIX: SORT CSV BY DATE CHRONOLOGICALLY
-    MGMT_CSV.sort((a,b) => new Date(a[2]) - new Date(b[2]));
+    // FIX: Filter out invalid dates (headers) before sort/processing
+    let cleanCsv = MGMT_CSV.filter(r => !isNaN(Date.parse(r[2])));
+    cleanCsv.sort((a,b) => new Date(a[2]) - new Date(b[2]));
 
-    // DETECT AUDIT YEAR (Use most frequent year in CSV) AND LATEST DATE
+    // DETECT AUDIT YEAR
     let yearCounts = {};
-    let latestCsvDate = new Date(0); // Epoch
+    let latestCsvDate = new Date(0); 
 
-    MGMT_CSV.forEach(row => {
+    cleanCsv.forEach(row => {
         let d = new Date(row[2]);
-        if(!isNaN(d)) { 
-            let y = d.getFullYear(); 
-            yearCounts[y] = (yearCounts[y] || 0) + 1; 
-            if(d > latestCsvDate) latestCsvDate = d;
-        }
+        let y = d.getFullYear(); 
+        yearCounts[y] = (yearCounts[y] || 0) + 1; 
+        if(d > latestCsvDate) latestCsvDate = d;
     });
-    let auditYear = parseInt(Object.keys(yearCounts).reduce((a, b) => yearCounts[a] > yearCounts[b] ? a : b));
+    
+    // SAFE YEAR DETECTION
+    let auditYear = new Date().getFullYear();
+    if (Object.keys(yearCounts).length > 0) {
+        auditYear = parseInt(Object.keys(yearCounts).reduce((a, b) => yearCounts[a] > yearCounts[b] ? a : b));
+    }
 
-    MGMT_CSV.forEach(row => {
+    // --- DEDUPLICATION SET ---
+    let processedJournals = new Set();
+
+    cleanCsv.forEach(row => {
         let rowStr = row.join(" ").toLowerCase();
-        let memo = (row[11] || "").toLowerCase(); 
+        let journalId = row[20]; // Journal ID is typically Column U (index 20)
 
-        // FIX: BLOCK LEASING/PLACEMENT FEES
+        // DEDUPLICATION CHECK
+        if (journalId && processedJournals.has(journalId)) {
+            return; // Skip if already processed this transaction ID
+        }
+
         if((rowStr.includes("management fees") || rowStr.includes("management fee")) && !rowStr.includes("leasing") && !rowStr.includes("placement") && !rowStr.includes("finder") && !rowStr.includes("marketing") && !rowStr.includes("letting") && !rowStr.includes("commission")) {
             
-            let dateVal = row[2]; // Default Date (Col C)
+            let dateVal = row[2]; 
             let d = new Date(dateVal);
 
-            // FIX: SMART DATE LOGIC (Use START Date for Month Bucket)
+            // FIX: SMART DATE LOGIC (Use Start Date for Month Bucket)
             // Example: 11/22/2025 - 12/10/2025 -> Nov 22 -> November
             let rangeMatch = rowStr.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})\s*-\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/);
             let monthNameMatch = rowStr.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/);
@@ -763,19 +823,20 @@ function runMgmtAudit() {
                 
                 let rawVal = (row[13] || "").toString().replace(/[$,]/g,'');
                 
-                // ANTI-ADDRESS LOGIC: Ignore if matches property number EXACTLY or contains letters
+                // ANTI-ADDRESS LOGIC
                 if (rawVal.includes(propNumber) || /[a-zA-Z]/.test(rawVal)) {
                     // Do nothing
                 } else {
                     let valN = parseFloat(rawVal); 
-                    // SAFETY CAP: Ignore fee if greater than 2x Rent
-                    let safeCap = Math.max(turnRentA || 0, turnRentB || 0, rJan || 0, rDec || 0) * 1.5; 
-                    if(safeCap === 0) safeCap = 5000; 
+                    // SAFETY CAP
+                    let safeCap = Math.max(turnRentA || 0, turnRentB || 0, rJan || 0, rDec || 0, multiFamilyRent) * 1.5; 
+                    if(safeCap === 0) safeCap = 50000; 
 
                     if(!isNaN(valN) && valN !== 0 && Math.abs(valN) < safeCap) {
                         monthlyData[m].actual += Math.abs(valN);
-                    } else if (!isNaN(valN) && valN !== 0) {
-                        // Fallback check Column O if N failed sanity check? No, risky. Just skip.
+                        monthlyData[m].fees.push(Math.abs(valN)); 
+                        // Mark Journal ID as processed
+                        if (journalId) processedJournals.add(journalId);
                     }
                 }
             }
@@ -788,22 +849,52 @@ function runMgmtAudit() {
     for(let m=1; m<=12; m++) {
         let currentRent = 0;
         let isTransitionMonth = false;
+        let expectedFee = 0;
+        let activeUnitCount = 0;
 
-        if (mode === 'no') currentRent = rJan;
-        else if (mode === 'yes') currentRent = (m >= splitMonth) ? rDec : rJan;
+        if (mode === 'multi') {
+            // Recalculate Active Units for THIS MONTH m
+             let propFilter = prop.trim().toLowerCase();
+             let monthStart = new Date(auditYear, m-1, 1);
+             let monthEnd = new Date(auditYear, m-1, 28);
+             
+             let unitFees = {};
+             RENT_ROLL_CSV.forEach(r => {
+                 let rProp = (r['PropertyName'] || "").toLowerCase();
+                 if (!rProp.includes(propFilter) && propFilter.length > 0) return;
+                 let uNum = r['Number'] || r['Unit'] || "Main";
+                 let rStart = new Date(r['Start'] || r['LeaseStartRaw'] || "1900-01-01");
+                 let rEndStr = r['End'] || r['LeaseEndRaw'];
+                 let rEnd = (rEndStr === 'month-to-month' || !rEndStr) ? new Date("2099-12-31") : new Date(rEndStr);
+                 if (rStart <= monthEnd && rEnd >= monthStart) {
+                     let val = parseFloat((r['Rent'] || r['Current Rent'] || r['Amount'] || r['Market Rent'] || "0").replace(/[$,]/g,''));
+                     if (!unitFees[uNum] || rStart > unitFees[uNum].date) unitFees[uNum] = { rent: val, date: rStart };
+                 }
+             });
+             
+             Object.values(unitFees).forEach(u => {
+                currentRent += u.rent;
+                expectedFee += Math.max(u.rent * feePct, minFee);
+                activeUnitCount++; // Count active units
+            });
+        }
+        else if (mode === 'no') {
+            currentRent = rJan;
+            expectedFee = Math.max(currentRent * feePct, minFee);
+        }
+        else if (mode === 'yes') {
+            currentRent = (m >= splitMonth) ? rDec : rJan;
+            expectedFee = Math.max(currentRent * feePct, minFee);
+        }
         else {
             if (m === turnEnd || m === turnStart) isTransitionMonth = true; 
             if (m <= turnEnd) currentRent = turnRentA;      
             else if (m >= turnStart) currentRent = turnRentB; 
             else currentRent = 0; // Vacancy
+            
+            if (currentRent > 0) expectedFee = Math.max(currentRent * feePct, minFee);
         }
-
-        let calcFee = currentRent * feePct;
-        let expectedFee = Math.max(calcFee, minFee);
         
-        // FIX: VACANCY LOGIC
-        if (currentRent === 0) expectedFee = 0;
-
         let actualFee = monthlyData[m].actual;
         let status = "PASS";
         let note = "";
@@ -818,21 +909,38 @@ function runMgmtAudit() {
         else if(Math.abs(actualFee - expectedFee) > 0.05) {
             let isHandled = false;
 
-            // FIX: GLOBAL PRORATION MODE
-            // If in Turnover mode, allow ANY partial fee to pass as "Prorated"
-            // This catches late move-ins (Nov), early move-outs (May), etc.
-            if (mode === 'turnover' && actualFee > 0 && actualFee < expectedFee) {
+            // FIX: MULTI-FAMILY BEST MATCH CHECK
+            if (mode === 'multi' && monthlyData[m].fees.some(f => Math.abs(f - expectedFee) < 0.05)) {
                 status = "PASS";
-                note = "(Prorated)";
+                note = "(Verified Single Unit)";
+                actualFee = expectedFee; // Visual correction for report
                 isHandled = true;
             }
-            
-            // FIX: MOVE-OUT MONTH $0 PASS
-            // If it's the Move-Out Month (End Month) and fee is $0 -> PASS
-            if (mode === 'turnover' && m === turnEnd && actualFee === 0) {
-                status = "PASS";
-                note = "(Vacancy/No Rent)";
+
+            // FIX: MULTI-FAMILY TOTAL MIN FEE CHECK
+            // If the Charged Fee MATCHES the Minimum Fee (e.g. 2 Units * 120 = 240), then PASS it as "Min Fee Applied"
+            if (mode === 'multi' && activeUnitCount > 0 && Math.abs(actualFee - (activeUnitCount * minFee)) < 0.05) {
+                status = "PASS"; 
+                note = "(Min Fee Applied)"; 
                 isHandled = true;
+            }
+
+            // General Proration Logic
+            if (!isHandled) {
+                if ((mode === 'turnover' && isTransitionMonth) || (mode === 'multi')) {
+                    // Allow partial fees (Prorated)
+                    if (actualFee > 0 && actualFee < expectedFee) {
+                        status = "PASS";
+                        note = "(Prorated)";
+                        isHandled = true;
+                    } 
+                    // Allow $0.00 fee in Start Month (Deferred)
+                    else if (m === turnStart && actualFee === 0) {
+                        status = "PASS";
+                        note = "(Deferred)";
+                        isHandled = true;
+                    }
+                }
             }
 
             if (!isHandled) {
@@ -850,8 +958,8 @@ function runMgmtAudit() {
     let penalty = status === 'FAIL' ? (errors.length * 5).toFixed(2) : "0.00";
 
     let logicDesc = (mode === 'turnover') 
-        ? `Turnover: Tenant A ($${turnRentA}) -> Vacancy -> Tenant B ($${turnRentB})`
-        : `Greater Of Rule (${(feePct*100).toFixed(1)}% vs $${minFee})`;
+        ? `Turnover: Tenant A -> Tenant B` 
+        : (mode === 'multi' ? `Multi-Family Rent Roll ($${multiFamilyRent})` : `Greater Of Rule`);
 
     let fullReport = `QC AUDIT REPORT [Ref: ${QC_REF}]\nDate: ${new Date().toLocaleDateString()}\nType: Management Fee Audit\nProperty: ${prop}\nBuildium Task #: ${taskNum || "N/A"}\n\nMETHODOLOGY: ${logicDesc}.\n\nSTATUS: ${status}\nPENALTY: $${penalty}\nFindings:\n`;
     
@@ -1002,52 +1110,22 @@ function toggleAuditMode() { let m = document.getElementById('auditTypeSelect').
 function toggleMgmtRent(val) { 
     document.getElementById('mgmtRentSingle').style.display = val==='no'?'block':'none'; 
     document.getElementById('mgmtRentMulti').style.display = val==='yes'?'grid':'none'; 
-    document.getElementById('mgmtRentTurnover').style.display = val==='turnover'?'block':'none'; 
+    document.getElementById('mgmtRentTurnover').style.display = val==='turnover'?'block':'none';
+    document.getElementById('mgmtRentMultiFamily').style.display = val==='multi'?'block':'none';
 }
 function openUpdateModal(id) { EDITING_ID = id; document.getElementById('updateModal').style.display='flex'; }
 function closeModal() { document.getElementById('updateModal').style.display='none'; document.getElementById('actionModal').style.display='none'; }
-function confirmUpdate() { 
-    if(AUDIT_LOG[EDITING_ID]) { 
-        AUDIT_LOG[EDITING_ID].opsStatus = 'CLEARED'; 
-        const reason = document.getElementById('modalOpsReason').value;
-        const ref = document.getElementById('modalRefId').value;
-        const notes = document.getElementById('modalNotes').value;
-        if(reason && ref) AUDIT_LOG[EDITING_ID].resolution = { reason, refId: ref, notes: notes };
-        if(isConnected) db.collection("audits").doc(EDITING_ID).update({ opsStatus: 'CLEARED', resolution: AUDIT_LOG[EDITING_ID].resolution });
-        renderHistoryRow(EDITING_ID, false); 
-    } 
-    closeModal(); 
-}
-function openActionModal(type, id) {
-    EDITING_ID = id; ACTION_TYPE = type;
-    document.getElementById('modalTitle').innerText = type === 'appeal' ? 'Formal Appeal' : 'Acknowledge Findings';
-    document.getElementById('actionModal').style.display = 'flex';
-}
-function confirmAction() {
-    if(AUDIT_LOG[EDITING_ID]) {
-        AUDIT_LOG[EDITING_ID].assigneeStatus = ACTION_TYPE === 'appeal' ? 'APPEALED' : 'ACKNOWLEDGED';
-        if(isConnected) db.collection("audits").doc(EDITING_ID).update({ assigneeStatus: AUDIT_LOG[EDITING_ID].assigneeStatus });
-        renderHistoryRow(EDITING_ID, false);
-    }
-    closeModal();
-}
+function confirmUpdate() { if(AUDIT_LOG[EDITING_ID]) { AUDIT_LOG[EDITING_ID].opsStatus = 'CLEARED'; const reason = document.getElementById('modalOpsReason').value; const ref = document.getElementById('modalRefId').value; const notes = document.getElementById('modalNotes').value; if(reason && ref) AUDIT_LOG[EDITING_ID].resolution = { reason, refId: ref, notes: notes }; if(isConnected) db.collection("audits").doc(EDITING_ID).update({ opsStatus: 'CLEARED', resolution: AUDIT_LOG[EDITING_ID].resolution }); renderHistoryRow(EDITING_ID, false); } closeModal(); }
+function openActionModal(type, id) { EDITING_ID = id; ACTION_TYPE = type; document.getElementById('modalTitle').innerText = type === 'appeal' ? 'Formal Appeal' : 'Acknowledge Findings'; document.getElementById('actionModal').style.display = 'flex'; }
+function confirmAction() { if(AUDIT_LOG[EDITING_ID]) { AUDIT_LOG[EDITING_ID].assigneeStatus = ACTION_TYPE === 'appeal' ? 'APPEALED' : 'ACKNOWLEDGED'; if(isConnected) db.collection("audits").doc(EDITING_ID).update({ assigneeStatus: AUDIT_LOG[EDITING_ID].assigneeStatus }); renderHistoryRow(EDITING_ID, false); } closeModal(); }
 function deleteAudit(id) { if(confirm("Delete?")) { delete AUDIT_LOG[id]; localStorage.setItem('pw_qc_history', JSON.stringify(AUDIT_LOG)); document.getElementById(`row-${id}`).remove(); updateScorecard(); if(isConnected) db.collection("audits").doc(id).delete(); } }
 function copyFullReport() { navigator.clipboard.writeText(document.getElementById('fullReportOutput').value); alert("Copied!"); }
 function copyTatEmail() { navigator.clipboard.writeText(document.getElementById('tatEmailTemplate').value); alert("Copied!"); }
 function showTab(id) { ['auditTab','historyTab','scoreTab'].forEach(t => document.getElementById(t).style.display = t===id?'block':'none'); }
 function clearSystemData() { localStorage.clear(); location.reload(); }
 function saveAuditorName() { localStorage.setItem('pw_qc_auditor', document.getElementById('globalAuditor').value); }
-function loadLogo(input) { if(input.files && input.files[0]) { var r = new FileReader(); r.onload = function(e) { LOGO_DATA = e.target.result; localStorage.setItem('pw_qc_logo', LOGO_DATA); document.getElementById('logoPreview').src=LOGO_DATA; document.getElementById('logoPreview').style.display='block'; }; r.readAsDataURL(input.files[0]); } }
-function updateScorecard() { 
-    const audits = Object.values(AUDIT_LOG); 
-    const total = audits.length; 
-    const passed = audits.filter(a => a.status === 'PASS').length; 
-    const rate = total === 0 ? 0 : Math.round((passed / total) * 100); 
-    const penalties = audits.reduce((sum, a) => sum + (a.penaltyAmt || 0), 0); 
-    document.getElementById('scoreTotal').innerText = total; 
-    document.getElementById('scorePass').innerText = rate + "%"; 
-    document.getElementById('scorePenalty').innerText = "$" + penalties.toFixed(2);
-}
+function loadLogo(input) { if(input.files && input.files[0]) { var r = new FileReader(); r.onload = function(e) { LOGO_DATA = e.target.result; localStorage.setItem('pw_qc_logo', LOGO_DATA); document.getElementById('logoPreview').src=LOGO_DATA; document.getElementById('logoPreview').style.display='block'; document.getElementById('logoText').style.display='none'; }; r.readAsDataURL(input.files[0]); } }
+function updateScorecard() { const audits = Object.values(AUDIT_LOG); const total = audits.length; const passed = audits.filter(a => a.status === 'PASS').length; const rate = total === 0 ? 0 : Math.round((passed / total) * 100); const penalties = audits.reduce((sum, a) => sum + (a.penaltyAmt || 0), 0); document.getElementById('scoreTotal').innerText = total; document.getElementById('scorePass').innerText = rate + "%"; document.getElementById('scorePenalty').innerText = "$" + penalties.toFixed(2); }
 function checkTAT() { /* TAT Logic */ }
 </script>
 </body>
