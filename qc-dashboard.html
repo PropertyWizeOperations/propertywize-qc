@@ -154,7 +154,7 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
     <h3>Audit Methodology</h3>
     <div id="pdf-methodology" class="pdf-methodology"></div>
     <h3>Detailed Findings</h3>
-    <div id="pdf-content" style="line-height: 1.6; font-size:13px; white-space: pre-wrap; font-family: monospace;"></div>
+    <div id="pdf-content" style="line-height: 1.6; font-size:12px; white-space: pre-wrap; font-family: monospace;"></div>
     
     <div id="pdf-ops-section" style="display:none; margin-top:20px; border-top:2px dashed #ccc; padding-top:10px;">
         <h4 style="margin-bottom:5px; color:#d69e2e;">⚠️ Operational Flag Resolved</h4>
@@ -1063,10 +1063,10 @@ function genPDF(id) {
 
     // 1-PAGE OPTIMIZATION: Reduce scale and adjust margins [cite: 93]
     const opt = {
-        margin: 0.15,
+        margin: 0.12,
         filename: `Audit_${data.qcRef}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 1.8, useCORS: true, letterRendering: true },
+        html2canvas: { scale: 1.6, useCORS: true, letterRendering: true },
         jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
     };
 
