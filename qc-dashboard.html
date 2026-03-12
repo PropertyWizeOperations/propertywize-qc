@@ -79,7 +79,7 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
 .pdf-logo-cell { text-align: left; width: 40%; }
 .pdf-info-cell { text-align: right; width: 60%; }
 .pdf-title { font-size: 24px; font-weight: bold; color: #003366; margin-bottom: 5px; }
-.pdf-meta { font-size: 13px; color: #555; line-height: 1.4; }
+.pdf-meta { font-size: 12px; color: #555; line-height: 1.4; }
 .pdf-logo-img { max-height: 65px; max-width: 220px; }
 .pdf-methodology { background: #eef2f7; padding: 10px; border-left: 4px solid #003366; margin-bottom: 15px; font-size: 13px; color: #444; }
 </style>
@@ -1064,10 +1064,10 @@ function genPDF(id) {
     el.style.display = 'block';
     
     const opt = {
-        margin: 0.25,
+        margin: 0.15,
         filename: `Audit_${data.qcRef}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2 },
+        html2canvas: { scale: 1.8 },
         jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
     };
 
