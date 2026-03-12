@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -350,7 +349,7 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
                     <div style="display:flex; justify-content:space-between;"><h3>1. Agreement Parameters</h3><div style="font-weight:bold; color:var(--primary);">QC Ref: <span id="qcRefDisplayMgmt">...</span></div></div>
                     
                     <div class="scanned-data" style="grid-template-columns: 1fr 1fr 1fr;">
-                        <div><label>Property</label><input type="text" id="mgmtProp" placeholder="e.g. 254 Stanmore Rd"></div>
+                        <div><label>Property</label><input type="text" id="mgmtProp"></div>
                         <div><label>Buildium Task #</label><input type="text" id="mgmtTaskNum" placeholder="#12345"></div> 
                         <div><label>Assignee</label><input type="text" id="mgmtAssign" placeholder="e.g. Finance"></div>
                         <div><label>Fee %</label><input type="number" id="mgmtFeePct"></div>
@@ -399,16 +398,6 @@ input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; bor
                                 </div>
                             </div>
                         </div>
-						<div class="toggle-row" style="background: #fff5f5; border: 1px solid #feb2b2; margin-bottom: 15px;">
-    <label style="font-weight:bold; color:#c53030;">
-        <i class="fas fa-clock"></i> Is this property billed in Arrears?
-    </label>
-    <select id="arrearsBillingToggle" style="width:auto; border: 2px solid #fc8181; font-weight:bold;">
-        <option value="no">No (Standard Billing)</option>
-        <option value="yes">Yes (Billed 1 Month Late)</option>
-    </select>
-    <small style="color: #744210; margin-left: 10px;">*Shifts December audit expectation to January 2026</small>
-</div>
 
                         <div id="mgmtRentMultiFamily" style="display:none; margin-top:10px; background:#e3f2fd; padding:15px; border-radius:6px; border:1px solid #90caf9;">
                             <p style="font-weight:bold; color:#1565c0; margin-bottom:10px;"><i class="fas fa-building"></i> Upload Rent Roll (Up to 300 Units)</p>
@@ -544,7 +533,7 @@ function processFile(input, type) {
     }
 }
 
-// --- TENANT LEDGER AUDIT ---
+// --- TENANT LEDGER AUDIT (FIXED: DETAILED RENT LOG + CUSTOM SCHEDULE + WAIVED FEES) ---
 function runLedgerAudit() {
     if(!FILES.csv) return alert("Upload Tenant Ledger CSV (Slot 1)");
     
@@ -677,7 +666,7 @@ function runLedgerAudit() {
     }
 
     let status = errors.length === 0 ? "PASS" : "FAIL";
-    let penalty = status === "FAIL" ? "5.00" : "0.00";
+    let penalty = status === "FAIL" ? (errors.length * 5).toFixed(2) : "0.00";
     
     let report = `QC AUDIT REPORT [Ref: ${QC_REF}]\nDate: ${new Date().toLocaleDateString()}\nStatus: ${status}\nPenalty: $${penalty}\n\n${logicSummary}\n\n${detailedLog}\n------------------------------------------------\nSUMMARY FINDINGS:\n`;
     if(status === 'FAIL') {
@@ -701,61 +690,161 @@ function runLedgerAudit() {
     CURRENT_AUDIT = { qcRef: QC_REF, date: new Date().toISOString(), type: "Tenant Ledger Audit", prop: document.getElementById('propAddress').value, tenant: document.getElementById('scanTenant').value, task: document.getElementById('mainTaskNumber').value, assignee: document.getElementById('assignVA').value, auditor: document.getElementById('globalAuditor').value, status, penaltyAmt: parseFloat(penalty), report, isStagnant, opsStatus: isStagnant?'PENDING':'N/A', assigneeStatus: status==='FAIL' ? 'PENDING' : 'N/A' };
 }
 
-// --- MANAGEMENT AUDIT ---
+// --- MANAGEMENT AUDIT (FIXED: MULTI-OWNER DUPLICATION BUG + HEADER FIX + DYNAMIC RENT CALCULATION) ---
 function runMgmtAudit() {
-    // 1. Check if the Arrears toggle is set to "yes"
-    const isArrears = document.getElementById('arrearsBillingToggle').value === 'yes';
+    if(!FILES.mgmtCsv) return alert("Upload Owner Statement CSV (Slot 2)");
     
-    const rentBase = parseFloat(document.getElementById('mgmtRentBase').value) || 0;
-    const feePct = parseFloat(document.getElementById('mgmtFeePercent').value) || 0;
-    const flatFee = parseFloat(document.getElementById('mgmtFlatFee').value) || 0;
-    const rule = document.getElementById('mgmtMethodology').value;
+    const feePct = parseFloat(document.getElementById('mgmtFeePct').value) / 100;
+    const minFee = parseFloat(document.getElementById('mgmtMin').value) || 0;
+    const prop = document.getElementById('mgmtProp').value;
+    const taskNum = document.getElementById('mgmtTaskNum').value; 
+    const auditorName = document.getElementById('globalAuditor').value;
+    
+    // SAFE PROPERTY NUMBER EXTRACTION
+    let propMatch = prop.match(/\d+/);
+    let propNumber = propMatch ? propMatch[0] : "INVALID_PROP_NUM"; 
 
-    let findings = [];
-    let logRows = "Month      | Rent Base | Expected | Charged  | Status\n";
-    logRows += "----------------------------------------------------\n";
-    let totalPenalty = 0;
+    const mode = document.querySelector('input[name="mgmtRentCheck"]:checked').value;
+    
+    let rJan, rDec, splitMonth;
+    let turnRentA, turnEnd, turnRentB, turnStart;
+    let multiFamilyRent = 0;
+    let multiFamilyFeeTotal = 0;
 
-    for (let m = 1; m <= 12; m++) {
-        let monthName = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m-1];
-        let charged = parseFloat(document.getElementById('m' + m + 'Charged').value) || 0;
+    // --- MODE SELECTION ---
+    if (mode === 'multi') {
+        if (!FILES.rentRoll) return alert("Please upload the Rent Roll CSV for Multi-Family audit.");
         
-        let pctAmt = rentBase * (feePct / 100);
-        let expected = (rule === "greater") ? Math.max(pctAmt, flatFee) : pctAmt;
+        let activeUnits = {};
+        let propFilter = prop.trim().toLowerCase();
 
-        let status = "PASS";
-        let icon = "✅";
-        let displayStatus = "PASS";
+        RENT_ROLL_CSV.forEach(r => {
+            let rProp = (r['PropertyName'] || "").toLowerCase();
+            if (!rProp.includes(propFilter) && propFilter.length > 0) return; 
 
-        // 2. FIXED ARREARS LOGIC FOR DECEMBER
-        if (m === 12 && isArrears) {
-            if (charged === 0) {
-                status = "PASS";
-                icon = "⏳"; // Hourglass icon for pending
-                displayStatus = "PENDING (Billed Jan 2026)";
+            let uNum = r['Number'] || r['Unit'] || "Main";
+            let rDate = new Date(r['Start'] || r['LeaseStartRaw'] || "1900-01-01");
+            
+            if (!activeUnits[uNum] || rDate > activeUnits[uNum].date) {
+                let val = parseFloat((r['Rent'] || r['Current Rent'] || r['Amount'] || r['Market Rent'] || "0").replace(/[$,]/g,''));
+                if (!isNaN(val)) {
+                    activeUnits[uNum] = { date: rDate, rent: val };
+                }
             }
-        } else {
-            // Standard Pass/Fail check for all other months
-            if (Math.abs(charged - expected) > 0.02) {
-                status = "FAIL";
-                icon = "❌";
-                displayStatus = "FAIL";
-                findings.push(`Month ${m}: Charged $${charged.toFixed(2)}, Expected $${expected.toFixed(2)}`);
-                totalPenalty += 5;
-            }
+        });
+
+        // 5. Sum Rent & Fee (Per Unit Logic)
+        Object.values(activeUnits).forEach(u => {
+            multiFamilyRent += u.rent;
+            // CRITICAL FIX: Apply Max(Percentage, Min) PER UNIT
+            multiFamilyFeeTotal += Math.max(u.rent * feePct, minFee);
+        });
+
+        if (multiFamilyRent === 0) return alert("No active rent found for " + prop + " in Rent Roll.");
+        
+        rJan = multiFamilyRent; // Display Total Rent
+    } else if (mode === 'no') {
+        rJan = parseFloat(document.getElementById('mgmtRentA').value);
+        if(isNaN(rJan)) return alert("Enter Rent Amount");
+    } else if (mode === 'yes') {
+        rJan = parseFloat(document.getElementById('mgmtRentOld').value);
+        rDec = parseFloat(document.getElementById('mgmtRentNew').value);
+        splitMonth = parseInt(document.getElementById('mgmtChangeMonth').value);
+        if(isNaN(rJan)) return alert("Enter Old & New Rent");
+    } else {
+        turnRentA = parseFloat(document.getElementById('turnRentA').value);
+        turnEnd = parseInt(document.getElementById('turnEndMonth').value);
+        turnRentB = parseFloat(document.getElementById('turnRentB').value);
+        turnStart = parseInt(document.getElementById('turnStartMonth').value);
+        if(isNaN(turnRentA) || isNaN(turnRentB)) return alert("Enter Rent for both tenants");
+    }
+
+    if(isNaN(feePct)) return alert("Enter Management Fee %");
+
+    let errors = [];
+    let monthlyData = {}; 
+    for(let i=1; i<=12; i++) monthlyData[i] = { found: false, actual: 0, date: null, fees: [] };
+
+    // FIX: Filter out invalid dates (headers) before sort/processing
+    let cleanCsv = MGMT_CSV.filter(r => !isNaN(Date.parse(r[2])));
+    cleanCsv.sort((a,b) => new Date(a[2]) - new Date(b[2]));
+
+    // DETECT AUDIT YEAR
+    let yearCounts = {};
+    let latestCsvDate = new Date(0); 
+
+    cleanCsv.forEach(row => {
+        let d = new Date(row[2]);
+        let y = d.getFullYear(); 
+        yearCounts[y] = (yearCounts[y] || 0) + 1; 
+        if(d > latestCsvDate) latestCsvDate = d;
+    });
+    
+    // SAFE YEAR DETECTION
+    let auditYear = new Date().getFullYear();
+    if (Object.keys(yearCounts).length > 0) {
+        auditYear = parseInt(Object.keys(yearCounts).reduce((a, b) => yearCounts[a] > yearCounts[b] ? a : b));
+    }
+
+    // --- DEDUPLICATION SET ---
+    let processedJournals = new Set();
+
+    cleanCsv.forEach(row => {
+        let rowStr = row.join(" ").toLowerCase();
+        let journalId = row[20]; // Journal ID is typically Column U (index 20)
+
+        // DEDUPLICATION CHECK
+        if (journalId && processedJournals.has(journalId)) {
+            return; // Skip if already processed this transaction ID
         }
 
-        logRows += `${monthName.padEnd(10)} | $${rentBase.toFixed(2).padEnd(9)} | $${expected.toFixed(2).padEnd(8)} | $${charged.toFixed(2).padEnd(8)} | ${icon} ${displayStatus}\n`;
-    }
+        if((rowStr.includes("management fees") || rowStr.includes("management fee")) && !rowStr.includes("leasing") && !rowStr.includes("placement") && !rowStr.includes("finder") && !rowStr.includes("marketing") && !rowStr.includes("letting") && !rowStr.includes("commission")) {
+            
+            let dateVal = row[2]; 
+            let d = new Date(dateVal);
 
-    const ref = "QC-" + Math.floor(Math.random() * 900000 + 100000);
-    const report = `QC AUDIT REPORT [Ref: ${ref}]\nDate: ${new Date().toLocaleDateString()}\nType: Management Fee Audit\nProperty: ${document.getElementById('mgmtPropName').value}\nBuildium Task #: ${document.getElementById('mgmtTaskNum').value}\n\nMETHODOLOGY: ${rule === "greater" ? "Greater Of Rule" : "Percentage Only"}.\n\nSTATUS: ${totalPenalty > 0 ? "FAIL" : "PASS"}\nPENALTY: $${totalPenalty.toFixed(2)}\nFindings:\n${findings.length ? findings.join('\n') : "None."}\n\n------------------------------------------------\nDETAILED LOG:\n${logRows}`;
+            // FIX: SMART DATE LOGIC (Use Start Date for Month Bucket)
+            // Example: 11/22/2025 - 12/10/2025 -> Nov 22 -> November
+            let rangeMatch = rowStr.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})\s*-\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/);
+            let monthNameMatch = rowStr.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/);
 
-    document.getElementById('fullReportOutput').value = report;
-    if(totalPenalty > 0) {
-        triggerPenaltyEntry(ref, 'Management Fee Audit', totalPenalty, report);
-    }
-}
+            if (rangeMatch) {
+                d = new Date(rangeMatch[1]); // Use START Date
+            } else if (monthNameMatch) {
+                const months = {jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11};
+                d = new Date(auditYear, months[monthNameMatch[1]], 28);
+            }
+            
+            if (d.getFullYear() !== auditYear) return;
+
+            if(!isNaN(d)) {
+                let m = d.getMonth() + 1;
+                monthlyData[m].found = true;
+                
+                let rawVal = (row[13] || "").toString().replace(/[$,]/g,'');
+                
+                // ANTI-ADDRESS LOGIC
+                if (rawVal.includes(propNumber) || /[a-zA-Z]/.test(rawVal)) {
+                    // Do nothing
+                } else {
+                    let valN = parseFloat(rawVal); 
+                    // SAFETY CAP
+                    let safeCap = Math.max(turnRentA || 0, turnRentB || 0, rJan || 0, rDec || 0, multiFamilyRent) * 1.5; 
+                    if(safeCap === 0) safeCap = 50000; 
+
+                    if(!isNaN(valN) && valN !== 0 && Math.abs(valN) < safeCap) {
+                        monthlyData[m].actual += Math.abs(valN);
+                        monthlyData[m].fees.push(Math.abs(valN)); 
+                        // Mark Journal ID as processed
+                        if (journalId) processedJournals.add(journalId);
+                    }
+                }
+            }
+        }
+    });
+
+    let reportRows = "";
+    
     // BUILD REPORT (Iterate 1-12)
     for(let m=1; m<=12; m++) {
         let currentRent = 0;
@@ -764,6 +853,8 @@ function runMgmtAudit() {
         let activeUnitCount = 0;
 
         if (mode === 'multi') {
+            // Recalculate Active Units for THIS MONTH m
+             let propFilter = prop.trim().toLowerCase();
              let monthStart = new Date(auditYear, m-1, 1);
              let monthEnd = new Date(auditYear, m-1, 28);
              
@@ -784,7 +875,7 @@ function runMgmtAudit() {
              Object.values(unitFees).forEach(u => {
                 currentRent += u.rent;
                 expectedFee += Math.max(u.rent * feePct, minFee);
-                activeUnitCount++; 
+                activeUnitCount++; // Count active units
             });
         }
         else if (mode === 'no') {
@@ -799,7 +890,7 @@ function runMgmtAudit() {
             if (m === turnEnd || m === turnStart) isTransitionMonth = true; 
             if (m <= turnEnd) currentRent = turnRentA;      
             else if (m >= turnStart) currentRent = turnRentB; 
-            else currentRent = 0; 
+            else currentRent = 0; // Vacancy
             
             if (currentRent > 0) expectedFee = Math.max(currentRent * feePct, minFee);
         }
@@ -807,55 +898,43 @@ function runMgmtAudit() {
         let actualFee = monthlyData[m].actual;
         let status = "PASS";
         let note = "";
-
-        // 🚨 AUTO-BORROW LOGIC (Dynamically handles Arrears or Combined Late Payments)
-        // If this month is short on fees, check if the NEXT month has extra fees collected to cover it.
-        if (actualFee < expectedFee - 0.05 && m < 12) {
-            let shortage = expectedFee - actualFee;
-            if (monthlyData[m+1].actual > 0) {
-                let amountToBorrow = Math.min(shortage, monthlyData[m+1].actual);
-                monthlyData[m+1].actual -= amountToBorrow;
-                actualFee += amountToBorrow;
-                if (amountToBorrow > 0) note = "(Arrears/Shifted)";
-            }
-        }
         
-        // 🚨 NO DATA / YEAR-END FORGIVENESS LOGIC
-        // expectedCurrentDate = The month it was supposed to be paid in
-        let expectedCurrentDate = new Date(auditYear, m-1, 28); 
-        // expectedArrearsDate = Allows an extra 15 days into the NEXT month just in case they bill in arrears
-        let expectedArrearsDate = new Date(auditYear, m, 15); 
-        
-        let isFuture = expectedCurrentDate > latestCsvDate;
-        let isArrearsFuture = expectedArrearsDate > latestCsvDate;
+        let thisMonthDate = new Date(auditYear, m-1, 28); 
+        let isFuture = thisMonthDate > latestCsvDate;
 
-        if (actualFee === 0 && (isFuture || isArrearsFuture)) {
+        if (isFuture && actualFee === 0) {
              status = "PENDING";
              note = "(No Data)";
         } 
         else if(Math.abs(actualFee - expectedFee) > 0.05) {
             let isHandled = false;
 
+            // FIX: MULTI-FAMILY BEST MATCH CHECK
             if (mode === 'multi' && monthlyData[m].fees.some(f => Math.abs(f - expectedFee) < 0.05)) {
                 status = "PASS";
                 note = "(Verified Single Unit)";
-                actualFee = expectedFee; 
+                actualFee = expectedFee; // Visual correction for report
                 isHandled = true;
             }
 
+            // FIX: MULTI-FAMILY TOTAL MIN FEE CHECK
+            // If the Charged Fee MATCHES the Minimum Fee (e.g. 2 Units * 120 = 240), then PASS it as "Min Fee Applied"
             if (mode === 'multi' && activeUnitCount > 0 && Math.abs(actualFee - (activeUnitCount * minFee)) < 0.05) {
                 status = "PASS"; 
                 note = "(Min Fee Applied)"; 
                 isHandled = true;
             }
 
+            // General Proration Logic
             if (!isHandled) {
                 if ((mode === 'turnover' && isTransitionMonth) || (mode === 'multi')) {
+                    // Allow partial fees (Prorated)
                     if (actualFee > 0 && actualFee < expectedFee) {
                         status = "PASS";
                         note = "(Prorated)";
                         isHandled = true;
                     } 
+                    // Allow $0.00 fee in Start Month (Deferred)
                     else if (m === turnStart && actualFee === 0) {
                         status = "PASS";
                         note = "(Deferred)";
@@ -876,7 +955,7 @@ function runMgmtAudit() {
     }
 
     let status = errors.length === 0 ? "PASS" : "FAIL";
-    let penalty = status === "FAIL" ? "5.00" : "0.00";
+    let penalty = status === 'FAIL' ? (errors.length * 5).toFixed(2) : "0.00";
 
     let logicDesc = (mode === 'turnover') 
         ? `Turnover: Tenant A -> Tenant B` 
@@ -1019,8 +1098,7 @@ function renderHistoryRow(id, isNew) {
     tools += `<button class="btn btn-danger" style="padding:2px 5px;" title="Delete" onclick="deleteAudit('${id}')"><i class="fas fa-trash"></i></button>`;
 
     let statusIcon = data.status==='PASS' ? (data.isStagnant ? '✅ <i class="fas fa-exclamation-triangle icon-warning"></i>' : '✅') : '❌';
-    let safePenalty = (parseFloat(data.penaltyAmt) || 0).toFixed(2);
-    let html = `<td>${data.date.split('T')[0]}</td><td>${data.auditor||'-'}</td><td>${data.type||'-'}</td><td>${data.prop||'-'}</td><td>${statusIcon} ${data.status}</td><td>$${safePenalty}</td><td>${opsBadge}</td><td>${assigneeBtn}</td><td>${tools}</td>`;
+    let html = `<td>${data.date.split('T')[0]}</td><td>${data.auditor||'-'}</td><td>${data.type||'-'}</td><td>${data.prop||'-'}</td><td>${statusIcon} ${data.status}</td><td>$${data.penaltyAmt}</td><td>${opsBadge}</td><td>${assigneeBtn}</td><td>${tools}</td>`;
     
     if(isNew) { let r = document.getElementById('historyBody').insertRow(0); r.id=`row-${id}`; r.innerHTML=html; }
     else { let r = document.getElementById(`row-${id}`); if(r) r.innerHTML=html; else { let nr = document.getElementById('historyBody').insertRow(-1); nr.id=`row-${id}`; nr.innerHTML=html; } }
@@ -1047,7 +1125,7 @@ function showTab(id) { ['auditTab','historyTab','scoreTab'].forEach(t => documen
 function clearSystemData() { localStorage.clear(); location.reload(); }
 function saveAuditorName() { localStorage.setItem('pw_qc_auditor', document.getElementById('globalAuditor').value); }
 function loadLogo(input) { if(input.files && input.files[0]) { var r = new FileReader(); r.onload = function(e) { LOGO_DATA = e.target.result; localStorage.setItem('pw_qc_logo', LOGO_DATA); document.getElementById('logoPreview').src=LOGO_DATA; document.getElementById('logoPreview').style.display='block'; document.getElementById('logoText').style.display='none'; }; r.readAsDataURL(input.files[0]); } }
-function updateScorecard() { const audits = Object.values(AUDIT_LOG); const total = audits.length; const passed = audits.filter(a => a.status === 'PASS').length; const rate = total === 0 ? 0 : Math.round((passed / total) * 100); const penalties = audits.reduce((sum, a) => sum + (parseFloat(a.penaltyAmt) || 0), 0); document.getElementById('scoreTotal').innerText = total; document.getElementById('scorePass').innerText = rate + "%"; document.getElementById('scorePenalty').innerText = "$" + penalties.toFixed(2); }
+function updateScorecard() { const audits = Object.values(AUDIT_LOG); const total = audits.length; const passed = audits.filter(a => a.status === 'PASS').length; const rate = total === 0 ? 0 : Math.round((passed / total) * 100); const penalties = audits.reduce((sum, a) => sum + (a.penaltyAmt || 0), 0); document.getElementById('scoreTotal').innerText = total; document.getElementById('scorePass').innerText = rate + "%"; document.getElementById('scorePenalty').innerText = "$" + penalties.toFixed(2); }
 function checkTAT() { /* TAT Logic */ }
 </script>
 </body>
