@@ -1030,52 +1030,47 @@ function genPDF(id) {
     const data = AUDIT_LOG[id];
     if(!data) return alert("Error: Audit data not found.");
 
-    document.getElementById('pdf-gen-date').innerText = (data.date || "").split('T')[0];
-    document.getElementById('pdf-qc-ref').innerText = data.qcRef || "-";
-    document.getElementById('pdf-header-status').innerText = data.status || "-";
-    document.getElementById('pdf-type').innerText = data.type || "Audit";
-    document.getElementById('pdf-auditor').innerText = data.auditor || "-";
-    document.getElementById('pdf-assignee').innerText = data.assignee || "-";
-    document.getElementById('pdf-task').innerText = data.task || "-";
-    document.getElementById('pdf-tenant').innerText = data.tenant || "-";
-    document.getElementById('pdf-property').innerText = data.prop || "-";
+    document.getElementById('pdf-gen-date').innerText = (data.date||"").split('T')[0];
+    document.getElementById('pdf-qc-ref').innerText = data.qcRef;
+    document.getElementById('pdf-type').innerText = data.type;
+    document.getElementById('pdf-auditor').innerText = data.auditor;
+    document.getElementById('pdf-property').innerText = data.prop;
+    document.getElementById('pdf-task').innerText = data.task || "N/A";
+    document.getElementById('pdf-assignee').innerText = data.assignee || "N/A"; // Map Assignee
+    document.getElementById('pdf-tenant').innerText = data.tenant || "N/A";     // Map Tenant
+    document.getElementById('pdf-header-status').innerText = data.status;
     
-    if (data.report) {
-        document.getElementById('pdf-content').innerHTML = data.report.replace(/\n/g, '<br>');
+    document.getElementById('pdf-methodology-text').innerText = data.methodText || "Standard Audit";
+    let pVal = parseFloat(data.penaltyAmt) || 0;
+    document.getElementById('pdf-penalty-disp').innerText = "$" + pVal.toFixed(2);
+    
+    // Map Detailed Findings [cite: 77, 104]
+    document.getElementById('pdf-content-findings').innerText = data.report;
+    
+    // Load Table if available (Mgmt Audits) 
+    const logContainer = document.getElementById('pdf-detailed-log-container');
+    if(data.logTableHtml) {
+        logContainer.style.display = 'block';
+        document.getElementById('pdf-log-table').innerHTML = data.logTableHtml;
     } else {
-        document.getElementById('pdf-content').innerText = "No detail available.";
-    }
-    
-    const ops = document.getElementById('pdf-ops-section');
-    if(data.isStagnant && data.opsStatus === "CLEARED" && data.resolution) {
-        ops.style.display = 'block';
-        document.getElementById('pdf-ops-status').innerText = "CLEARED";
-        document.getElementById('pdf-ops-reason').innerText = data.resolution.reason || "N/A";
-        document.getElementById('pdf-ops-ref').innerText = data.resolution.refId || "N/A";
-        document.getElementById('pdf-ops-notes').innerText = data.resolution.notes || ""; 
-    } else { 
-        ops.style.display = 'none'; 
+        logContainer.style.display = 'none';
     }
 
-    const img = document.getElementById('pdfLogo'); 
-    if(LOGO_DATA) { img.src = LOGO_DATA; img.style.display = 'block'; }
+    if(LOGO_DATA) document.getElementById('pdfLogo').src = LOGO_DATA;
     
     const el = document.getElementById('pdf-template');
     el.style.display = 'block';
-    
+
+    // 1-PAGE OPTIMIZATION: Reduce scale and adjust margins [cite: 93]
     const opt = {
         margin: 0.15,
         filename: `Audit_${data.qcRef}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 1.8 },
+        html2canvas: { scale: 1.8, useCORS: true, letterRendering: true },
         jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
     };
 
     html2pdf().set(opt).from(el).save().then(() => {
-        el.style.display = 'none';
-    }).catch(err => {
-        console.error(err);
-        alert("PDF Error. See console.");
         el.style.display = 'none';
     });
 }
